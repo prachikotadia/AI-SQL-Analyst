@@ -9,6 +9,13 @@
 
 A full-stack web application that converts natural language queries into SQL, executes them on uploaded CSV/Excel files, and automatically generates visualizations. Built with Next.js, TypeScript, and OpenRouter API.
 
+## 📸 Screenshots
+
+![Reasoning Output](./assets/screenshot-1.png)
+![SQL Output](./assets/screenshot-2.png)
+![Data Output](./assets/screenshot-3.png)
+
+
 ---
 
 ## 🎯 Features
