@@ -45,5 +45,6 @@ export interface ChatInfo {
   title: string
   updatedAt: Date
   messageCount: number
+  fileCount?: number
 }
 

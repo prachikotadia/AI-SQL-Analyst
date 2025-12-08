@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Moon, Sun, Database, LogOut } from 'lucide-react'
+import { Moon, Sun, Database, LogOut, Trash2 } from 'lucide-react'
 import type { QueryHistoryItem, ChatInfo } from '@/types'
 import type { ChatMessage } from '@/lib/data/chatStore'
 import { MessageSquare, Plus } from 'lucide-react'
@@ -16,6 +16,7 @@ interface HistorySidebarProps {
   chats?: ChatInfo[]
   currentChatId?: string | null
   onChatClick?: (chatId: string) => void
+  onChatDelete?: (chatId: string) => void
   onNewChat?: () => void
   chatMessages?: ChatMessage[]
   onMessageClick?: (message: ChatMessage) => void
@@ -39,6 +40,7 @@ export function HistorySidebar({
   chats = [],
   currentChatId,
   onChatClick,
+  onChatDelete,
   onNewChat,
   chatMessages = [],
   onMessageClick,
@@ -104,23 +106,47 @@ export function HistorySidebar({
           <h2 className="text-sm font-semibold mb-2">Chats</h2>
           <div className="space-y-1">
             {chats.map((chat) => (
-              <button
+              <div
                 key={chat.chatId}
-                onClick={() => onChatClick?.(chat.chatId)}
                 className={`
-                  w-full text-left text-xs p-2 rounded-md transition-all duration-200 
-                  hover:scale-[1.02] hover:shadow-sm
+                  group relative w-full rounded-md transition-all duration-200 
                   ${currentChatId === chat.chatId 
-                    ? 'bg-primary/10 text-primary font-semibold border border-primary/20' 
+                    ? 'bg-primary/10 border border-primary/20' 
                     : 'hover:bg-muted'
                   }
                 `}
               >
-                <div className="font-medium truncate">{chat.title}</div>
-                <div className="text-muted-foreground text-[10px] mt-1">
-                  {new Date(chat.updatedAt).toLocaleString()} • {chat.messageCount} messages
-                </div>
-              </button>
+                <button
+                  onClick={() => onChatClick?.(chat.chatId)}
+                  className={`
+                    w-full text-left text-xs p-2 pr-8 rounded-md transition-all duration-200 
+                    hover:scale-[1.02] hover:shadow-sm
+                    ${currentChatId === chat.chatId 
+                      ? 'text-primary font-semibold' 
+                      : ''
+                    }
+                  `}
+                >
+                  <div className="font-medium truncate">{chat.title}</div>
+                  <div className="text-muted-foreground text-[10px] mt-1">
+                    {new Date(chat.updatedAt).toLocaleString()} • {chat.messageCount} messages
+                  </div>
+                </button>
+                {onChatDelete && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (confirm(`Are you sure you want to delete "${chat.title}"?`)) {
+                        onChatDelete(chat.chatId)
+                      }
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-destructive/10 text-destructive hover:text-destructive"
+                    title="Delete chat"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </div>

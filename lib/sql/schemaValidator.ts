@@ -46,6 +46,17 @@ function extractColumnNames(sql: string): string[] {
     'ASC', 'DESC', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'EXISTS'
   ])
   
+  // Check if a string is a prefix of any SQL keyword (to avoid matching "CAS" from "CASE", etc.)
+  function isKeywordPrefix(str: string): boolean {
+    const upper = str.toUpperCase()
+    for (const keyword of sqlKeywords) {
+      if (keyword.startsWith(upper) && upper.length < keyword.length) {
+        return true
+      }
+    }
+    return false
+  }
+  
   // Extract quoted identifiers (quoted column names)
   const quotedMatches = sql.matchAll(/["']([^"']+)["']/g)
   for (const match of quotedMatches) {
@@ -87,18 +98,38 @@ function extractColumnNames(sql: string): string[] {
     }
   }
   
-  // Extract from WHERE, GROUP BY, ORDER BY clauses (more carefully)
+  // Extract from WHERE clause (carefully handle CASE expressions)
   const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+GROUP|\s+ORDER|\s+HAVING|\s*$)/is)
   if (whereMatch) {
     const whereClause = whereMatch[1]
+    
+    // Remove CASE ... END expressions to avoid matching keywords inside them
+    // Replace CASE ... END with a placeholder
+    let cleanedClause = whereClause
+    const casePattern = /CASE\s+WHEN[^E]*END/gi
+    cleanedClause = cleanedClause.replace(casePattern, 'CASE_EXPRESSION')
+    
     // Match column names before operators (but not values)
-    // Pattern: column name followed by =, <, >, <=, >=, !=, IN, LIKE, etc.
-    const whereCols = whereClause.matchAll(/(?:^|\s|\()(["']?)([A-Za-z_][A-Za-z0-9_]*)\1(?=\s*[=<>!INLIKE])/gi)
+    // Pattern: column name followed by =, <, >, <=, >=, !=, IN, LIKE, BETWEEN, etc.
+    // But exclude if it's part of a SQL keyword
+    const whereCols = cleanedClause.matchAll(/(?:^|\s|\()(["']?)([A-Za-z_][A-Za-z0-9_]{2,})\1(?=\s*[=<>!]|\s+IN\s*\(|\s+LIKE\s+|\s+BETWEEN\s+)/gi)
     for (const match of whereCols) {
       const colName = match[2]
       const colUpper = colName.toUpperCase()
-      // Skip keywords and single characters
-      if (!sqlKeywords.has(colUpper) && colName.length > 1) {
+      
+      // Skip if it's a SQL keyword or a prefix of a keyword
+      const isKeyword = sqlKeywords.has(colUpper) || isKeywordPrefix(colName)
+      
+      if (!isKeyword && colName.length > 1) {
+        columns.push(colName)
+      }
+    }
+    
+    // Extract quoted column names from CASE expressions (they're valid column references)
+    const quotedInCase = whereClause.matchAll(/CASE\s+WHEN\s+["']([A-Za-z_][A-Za-z0-9_]+)["']/gi)
+    for (const match of quotedInCase) {
+      const colName = match[1]
+      if (colName.length > 1 && !sqlKeywords.has(colName.toUpperCase())) {
         columns.push(colName)
       }
     }

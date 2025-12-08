@@ -34,6 +34,44 @@ function isNumeric(value: any): boolean {
 }
 
 /**
+ * Get human-readable label for a column name
+ */
+function getColumnLabel(columnName: string): string {
+  const labels: Record<string, string> = {
+    'City': 'City',
+    'State': 'State',
+    'LonD': 'Longitude (Degrees)',
+    'LonM': 'Longitude (Minutes)',
+    'LonS': 'Longitude (Seconds)',
+    'EW': 'East/West',
+    'LatD': 'Latitude (Degrees)',
+    'LatM': 'Latitude (Minutes)',
+    'LatS': 'Latitude (Seconds)',
+    'NS': 'North/South',
+    'count': 'Count',
+    'total': 'Total',
+    'avg': 'Average',
+    'sum': 'Sum',
+  }
+  
+  if (labels[columnName]) return labels[columnName]
+  
+  // Format: replace underscores, capitalize words
+  return columnName
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, l => l.toUpperCase())
+    .trim()
+}
+
+/**
+ * Check if column is a coordinate component (should be avoided for charts)
+ */
+function isCoordinateComponent(columnName: string): boolean {
+  const coordCols = ['LonD', 'LonM', 'LonS', 'EW', 'LatD', 'LatM', 'LatS', 'NS']
+  return coordCols.includes(columnName)
+}
+
+/**
  * Generate chart from SQL result rows
  */
 export function generateChartFromResult(
@@ -110,24 +148,62 @@ export function generateChartFromResult(
     }
   }
 
-  // Case 3: Multiple columns - try to find category + numeric
+  // Case 3: Multiple columns - intelligently select best category + numeric
   const numericColumns = columnNames.filter(col => 
-    isNumeric(firstRow[col])
+    isNumeric(firstRow[col]) && !isCoordinateComponent(col)
   )
   const categoryColumns = columnNames.filter(col => 
-    !isNumeric(firstRow[col]) && !isDateColumn(col, firstRow[col])
+    !isNumeric(firstRow[col]) && !isDateColumn(col, firstRow[col]) && !isCoordinateComponent(col)
   )
 
-  if (categoryColumns.length > 0 && numericColumns.length > 0) {
-    // Use first category + first numeric
+  // Prefer City or State for X-axis if available
+  const preferredXColumns = ['City', 'State', 'city', 'state']
+  const bestXColumn = categoryColumns.find(col => preferredXColumns.includes(col)) || categoryColumns[0]
+  
+  // For coordinate queries, prefer showing count by location rather than raw coordinates
+  const queryLower = query.toLowerCase()
+  const isCoordinateQuery = queryLower.includes('longitude') || queryLower.includes('latitude') || 
+                           queryLower.includes('west') || queryLower.includes('east') ||
+                           queryLower.includes('north') || queryLower.includes('south')
+  
+  if (isCoordinateQuery && bestXColumn && rows.length > 0) {
+    // Group by location (City or State) and show count
+    const locationKey = bestXColumn
+    const grouped: Record<string, number> = {}
+    
+    rows.forEach(row => {
+      const key = String(row[locationKey] || 'Unknown')
+      grouped[key] = (grouped[key] || 0) + 1
+    })
+    
+    const chartData = Object.entries(grouped)
+      .map(([key, count]) => ({
+        [locationKey]: key,
+        count: count,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20) // Limit to top 20 for readability
+    
     return {
       chartSpec: {
         type: 'bar',
-        xField: categoryColumns[0],
+        xField: locationKey,
+        yField: 'count',
+      },
+      chartData,
+    }
+  }
+
+  if (bestXColumn && numericColumns.length > 0) {
+    // Use best category + first meaningful numeric
+    return {
+      chartSpec: {
+        type: 'bar',
+        xField: bestXColumn,
         yField: numericColumns[0],
       },
       chartData: rows.map(row => ({
-        [categoryColumns[0]]: row[categoryColumns[0]],
+        [bestXColumn]: row[bestXColumn],
         [numericColumns[0]]: Number(row[numericColumns[0]]) || 0,
       })),
     }
@@ -142,7 +218,6 @@ export function generateChartFromResult(
 
   // Try to infer the filter category from query
   let filterLabel = 'Filtered'
-  const queryLower = query.toLowerCase()
   if (queryLower.includes('texas') || queryLower.includes('tx')) {
     filterLabel = 'Texas'
   } else if (queryLower.includes('california') || queryLower.includes('ca')) {

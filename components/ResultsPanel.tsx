@@ -85,69 +85,67 @@ export function ResultsPanel({ response, isLoading }: ResultsPanelProps) {
     )
   }
 
-  if (response.error) {
-    return (
-      <Card className="neumorphic-card border-destructive/50">
-        <CardHeader>
-          <CardTitle className="text-destructive">Error</CardTitle>
-          <CardDescription>{response.error.message}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <ReasoningPanel reasoning={response.reasoning || 'An error occurred while processing your query.'} />
-        </CardContent>
-      </Card>
-    )
-  }
-
+  // Always show all 4 tabs: Reasoning, SQL, Data, Chart
+  // Even when there's an error, show all sections with available data
   return (
-    <Tabs defaultValue="reasoning" className="w-full">
-      <TabsList className="neumorphic-card grid w-full grid-cols-4 p-1 gap-1">
-        <TabsTrigger 
-          value="reasoning" 
-          className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
-        >
-          Reasoning
-        </TabsTrigger>
-        <TabsTrigger 
-          value="sql" 
-          className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
-        >
-          SQL
-        </TabsTrigger>
-        <TabsTrigger 
-          value="data" 
-          className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
-        >
-          Data {response.data && response.data.length > 0 && `(${response.data.length})`}
-        </TabsTrigger>
-        <TabsTrigger 
-          value="chart" 
-          className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
-        >
-          Chart
-        </TabsTrigger>
-      </TabsList>
-      <TabsContent value="reasoning" className="mt-4 animate-in fade-in-50 duration-300">
-        <ReasoningPanel reasoning={response.reasoning} metricsInfo={response.metricsInfo} />
-      </TabsContent>
-      <TabsContent value="sql" className="mt-4 animate-in fade-in-50 duration-300">
-        <SqlPanel 
-          sql={response.sql} 
-          preview_sql={response.preview_sql} 
-          action_sql={response.action_sql} 
-        />
-      </TabsContent>
-      <TabsContent value="data" className="mt-4 animate-in fade-in-50 duration-300">
-        <DataTable data={response.data || []} columns={response.columns || []} />
-      </TabsContent>
-      <TabsContent value="chart" className="mt-4 animate-in fade-in-50 duration-300">
-        <ChartPanel 
-          data={response.data || []} 
-          chartSpec={response.chartSpec || { type: 'table', xField: null, yField: null }} 
-          columns={response.columns || []} 
-        />
-      </TabsContent>
-    </Tabs>
+    <div className="w-full space-y-4">
+      {response.error && (
+        <Card className="neumorphic-card border-destructive/50">
+          <CardHeader>
+            <CardTitle className="text-destructive">Error</CardTitle>
+            <CardDescription>{response.error.message}</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+      <Tabs defaultValue="reasoning" className="w-full">
+        <TabsList className="neumorphic-card grid w-full grid-cols-4 p-1 gap-1">
+          <TabsTrigger 
+            value="reasoning" 
+            className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            Reasoning
+          </TabsTrigger>
+          <TabsTrigger 
+            value="sql" 
+            className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            SQL
+          </TabsTrigger>
+          <TabsTrigger 
+            value="data" 
+            className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            Data {response.data && response.data.length > 0 && `(${response.data.length})`}
+          </TabsTrigger>
+          <TabsTrigger 
+            value="chart" 
+            className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            Chart
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="reasoning" className="mt-4 animate-in fade-in-50 duration-300">
+          <ReasoningPanel reasoning={response.reasoning || 'No reasoning available.'} metricsInfo={response.metricsInfo} />
+        </TabsContent>
+        <TabsContent value="sql" className="mt-4 animate-in fade-in-50 duration-300">
+          <SqlPanel 
+            sql={response.sql} 
+            preview_sql={response.preview_sql} 
+            action_sql={response.action_sql} 
+          />
+        </TabsContent>
+        <TabsContent value="data" className="mt-4 animate-in fade-in-50 duration-300">
+          <DataTable data={response.data || []} columns={response.columns || []} />
+        </TabsContent>
+        <TabsContent value="chart" className="mt-4 animate-in fade-in-50 duration-300">
+          <ChartPanel 
+            data={response.data || []} 
+            chartSpec={response.chartSpec || { type: 'table', xField: null, yField: null }} 
+            columns={response.columns || []} 
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
   )
 }
 

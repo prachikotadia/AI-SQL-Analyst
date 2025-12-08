@@ -11,6 +11,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { getSession, loginDemo, isAuthenticated, logout as logoutSession } from '@/lib/auth/session'
 import type { QueryResponse, QueryHistoryItem, ChatInfo } from '@/types'
 import { createChat, getChat, getAllChats, type ChatMessage } from '@/lib/data/chatStore'
+import { 
+  getStoredChats, 
+  getChatFromStorage, 
+  saveChatToStorage, 
+  getCurrentChatId, 
+  setCurrentChatId as setCurrentChatIdInStorage,
+  updateChatInStorage,
+  addMessageToStoredChat,
+  updateChatFilesInStorage,
+  removeChatFromStorage,
+  type StoredChat
+} from '@/lib/storage/localChatStorage'
 
 export default function Home() {
   const [query, setQuery] = useState('')
@@ -27,7 +39,6 @@ export default function Home() {
   const resultsRef = useRef<HTMLDivElement>(null)
   const { toast } = useToast()
 
-  // Define functions before useEffect that uses them
   const createNewChat = useCallback(async () => {
     try {
       const res = await fetch('/api/chats', { method: 'POST' })
@@ -46,14 +57,23 @@ export default function Home() {
       const newChatId = data.chatId
       if (newChatId) {
         setCurrentChatId(newChatId)
-        localStorage.setItem('currentChatId', newChatId)
+        setCurrentChatIdInStorage(newChatId)
         setChatFiles([])
         setChatMessages([])
         setQuery('')
         setResponse(null)
+        
+        const newChat: StoredChat = {
+          chatId: newChatId,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          title: 'New Chat',
+          attachedFiles: [],
+          messages: [],
+        }
+        saveChatToStorage(newChat)
       }
     } catch (error) {
-      // Silent fallback - create chat in-memory
       const fallbackChatId = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
       setCurrentChatId(fallbackChatId)
       localStorage.setItem('currentChatId', fallbackChatId)
@@ -70,98 +90,175 @@ export default function Home() {
       return
     }
     
+    const storedChat = getChatFromStorage(chatId)
+    if (storedChat) {
+      setCurrentChatId(storedChat.chatId)
+      setCurrentChatIdInStorage(storedChat.chatId)
+      setChatFiles(storedChat.attachedFiles || [])
+      
+      const messages: ChatMessage[] = storedChat.messages.map(msg => ({
+        id: msg.id,
+        timestamp: new Date(msg.timestamp),
+        queryText: msg.queryText,
+        response: msg.response,
+        summary: msg.summary,
+      }))
+      setChatMessages(messages)
+      
+      if (messages.length > 0) {
+        const lastMessage = messages[messages.length - 1]
+        setResponse(lastMessage.response)
+      } else {
+        setResponse(null)
+      }
+    }
+    
     try {
       const res = await fetch(`/api/chats/${encodeURIComponent(chatId)}`)
-      if (!res.ok) {
-        // API should never return non-OK in normal flow, but handle gracefully
-        const errorData = await res.json().catch(() => ({}))
-        // Silently create new chat - no error logging for expected cases
-        await createNewChat()
-        return
-      }
-      
-      const data = await res.json()
-      if (data.chat) {
-        const loadedChatId = data.chat.chatId
-        setCurrentChatId(loadedChatId)
-        localStorage.setItem('currentChatId', loadedChatId)
-        setChatFiles(data.chat.attachedFiles || [])
-        setChatMessages(data.chat.messages || [])
-        // Load last message response if available
-        if (data.chat.messages && data.chat.messages.length > 0) {
-          const lastMessage = data.chat.messages[data.chat.messages.length - 1]
-          setResponse(lastMessage.response)
-        } else {
-          setResponse(null)
+      if (res.ok) {
+        const data = await res.json()
+        if (data.chat) {
+          const loadedChatId = data.chat.chatId
+          setCurrentChatId(loadedChatId)
+          setCurrentChatIdInStorage(loadedChatId)
+          
+          let files = data.chat.attachedFiles || []
+          
+          if (files.length === 0 && storedChat) {
+            files = storedChat.attachedFiles || []
+          }
+          
+          setChatFiles(files)
+          
+          const serverMessages: ChatMessage[] = (data.chat.messages || []).map((msg: any) => ({
+            id: msg.id,
+            timestamp: new Date(msg.timestamp),
+            queryText: msg.queryText,
+            response: msg.response,
+            summary: msg.summary,
+          }))
+          setChatMessages(serverMessages)
+          
+          const chatToStore: StoredChat = {
+            chatId: loadedChatId,
+            createdAt: data.chat.createdAt ? new Date(data.chat.createdAt).toISOString() : new Date().toISOString(),
+            updatedAt: data.chat.updatedAt ? new Date(data.chat.updatedAt).toISOString() : new Date().toISOString(),
+            title: data.chat.title || 'New Chat',
+            attachedFiles: files,
+            messages: serverMessages.map(msg => ({
+              id: msg.id,
+              timestamp: msg.timestamp.toISOString(),
+              queryText: msg.queryText,
+              response: msg.response,
+              summary: msg.summary,
+            })),
+          }
+          saveChatToStorage(chatToStore)
+          
+          if (serverMessages.length > 0) {
+            const lastMessage = serverMessages[serverMessages.length - 1]
+            setResponse(lastMessage.response)
+          } else {
+            setResponse(null)
+          }
         }
-      } else {
-        // No chat data, create new one silently
-        await createNewChat()
       }
     } catch (error) {
-      // Only log unexpected network errors, not normal chat creation flows
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        // Network error - log concisely
-        console.warn('Network error loading chat, creating new chat')
+      if (!storedChat) {
+        await createNewChat()
       }
-      // Silently create new chat
-      await createNewChat()
     }
   }, [createNewChat])
 
   const loadAllChats = useCallback(async () => {
+    const toDate = (date: any): Date => {
+      if (date instanceof Date) return date
+      if (typeof date === 'string') return new Date(date)
+      if (typeof date === 'number') return new Date(date)
+      return new Date()
+    }
+    
+    const createChatInfo = (chat: any): ChatInfo => ({
+      chatId: chat.chatId,
+      title: chat.title || 'New Chat',
+      updatedAt: toDate(chat.updatedAt),
+      messageCount: chat.messageCount || chat.messages?.length || 0,
+      ...(chat.fileCount !== undefined && { fileCount: chat.fileCount }),
+    })
+    
+    const storedChats = getStoredChats()
+    const chatsFromStorage: ChatInfo[] = storedChats.map(createChatInfo)
+    const validatedChatsFromStorage = chatsFromStorage.map(chat => ({
+      ...chat,
+      updatedAt: toDate(chat.updatedAt),
+    }))
+    setChats(validatedChatsFromStorage)
+    
     try {
       const res = await fetch('/api/chats')
       if (res.ok) {
         const data = await res.json()
-        setChats(data.chats || [])
+        const serverChats = data.chats || []
+        
+        const mergedChats = new Map<string, ChatInfo>()
+        
+        chatsFromStorage.forEach(chat => {
+          mergedChats.set(chat.chatId, {
+            ...chat,
+            updatedAt: toDate(chat.updatedAt),
+          })
+        })
+        
+        serverChats.forEach((chat: any) => {
+          mergedChats.set(chat.chatId, createChatInfo(chat))
+        })
+        
+        const allChats = Array.from(mergedChats.values()).map(chat => ({
+          ...chat,
+          updatedAt: toDate(chat.updatedAt),
+        }))
+        
+        const sortedChats = allChats.sort((a, b) => {
+          const aDate = toDate(a.updatedAt)
+          const bDate = toDate(b.updatedAt)
+          return bDate.getTime() - aDate.getTime()
+        })
+        
+        setChats(sortedChats)
       }
     } catch (error) {
-      // Silently handle - empty list is fine
-      setChats([])
+      console.warn('Failed to load chats from server, using localStorage:', error)
     }
   }, [])
 
   useEffect(() => {
-    // Check authentication
+    if (typeof window === 'undefined') return
+    
     const session = getSession()
     setAuthenticated(isAuthenticated())
     
-    // Load theme from localStorage
     const savedTheme = localStorage.getItem('theme') as 'light' | 'dark' | null
     if (savedTheme) {
       setTheme(savedTheme)
       document.documentElement.classList.toggle('dark', savedTheme === 'dark')
     }
 
-    // Initialize or load current chat (only on client side)
-    if (typeof window !== 'undefined') {
-      const savedChatId = localStorage.getItem('currentChatId')
-      if (savedChatId) {
-        loadChat(savedChatId).catch(() => {
-          // Silently handle - loadChat will create new chat on error
-        })
-      } else {
-        createNewChat().catch(() => {
-          // Silently handle - createNewChat has fallback
-        })
-      }
-
-      // Load all chats
-      loadAllChats().catch(() => {
-        // Silently handle - empty list is fine
-      })
+    const savedChatId = getCurrentChatId() || localStorage.getItem('currentChatId')
+    if (savedChatId) {
+      loadChat(savedChatId).catch(() => {})
+    } else {
+      createNewChat().catch(() => {})
     }
+
+    loadAllChats().catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    // Apply theme class
     document.documentElement.classList.toggle('dark', theme === 'dark')
     localStorage.setItem('theme', theme)
   }, [theme])
 
-  // Cleanup debounce timeout on unmount
   useEffect(() => {
     return () => {
       if (debouncedQueryRef.current) {
@@ -190,17 +287,14 @@ export default function Home() {
     })
   }
 
-  // Debounced query handler to prevent duplicate submissions
   const debouncedQueryRef = useRef<NodeJS.Timeout | null>(null)
   const isQueryInProgressRef = useRef(false)
 
   const executeQuery = useCallback(async (queryText: string, timeRangeValue?: string, fileIds?: string[]) => {
-    // Prevent duplicate submissions if already loading
     if (isQueryInProgressRef.current) {
       return
     }
 
-    // FRONTEND VALIDATION: Check if there are any attached files before calling API
     const hasFiles = (fileIds && fileIds.length > 0) || (chatFiles && chatFiles.length > 0)
     if (!hasFiles) {
       toast({
@@ -216,7 +310,6 @@ export default function Home() {
     setIsLoading(true)
     setResponse(null)
 
-    // Ensure we have a chatId
     let chatIdToUse: string | null = currentChatId
     if (!chatIdToUse) {
       try {
@@ -230,10 +323,19 @@ export default function Home() {
           }
         }
       } catch {
-        // Fallback: generate chatId locally
         chatIdToUse = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
         setCurrentChatId(chatIdToUse)
-        localStorage.setItem('currentChatId', chatIdToUse)
+        setCurrentChatIdInStorage(chatIdToUse)
+        
+        const newChat: StoredChat = {
+          chatId: chatIdToUse,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          title: 'New Chat',
+          attachedFiles: [],
+          messages: [],
+        }
+        saveChatToStorage(newChat)
       }
     }
 
@@ -251,7 +353,6 @@ export default function Home() {
 
       const data: QueryResponse = await res.json()
       
-      // Handle soft error for "no files" case (backend returns 200 with error object)
       if (data.error && data.error.type === 'no_files') {
         toast({
           title: 'Attach a file',
@@ -266,13 +367,29 @@ export default function Home() {
       
       setResponse(data)
 
-      // Reload chat to get updated messages and files
+      if (chatIdToUse) {
+        const message: ChatMessage = {
+          id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          timestamp: new Date(),
+          queryText: queryText,
+          response: data,
+          summary: queryText.length > 50 ? queryText.substring(0, 50) + '...' : queryText,
+        }
+        addMessageToStoredChat(chatIdToUse, message)
+        
+        const currentFiles = chatFiles.length > 0 ? chatFiles : (fileIds || []).map(id => ({
+          id,
+          fileName: 'Unknown',
+          rowCount: 0,
+        }))
+        updateChatFilesInStorage(chatIdToUse, currentFiles)
+      }
+
       if (chatIdToUse) {
         await loadChat(chatIdToUse)
         await loadAllChats()
       }
 
-      // Add to history (legacy, for backward compatibility)
       const historyItem: QueryHistoryItem = {
         id: Date.now().toString(),
         query: queryText,
@@ -280,14 +397,12 @@ export default function Home() {
         summary: queryText.length > 50 ? queryText.substring(0, 50) + '...' : queryText,
         success: !data.error,
       }
-      setHistory((prev) => [...prev, historyItem].slice(-20)) // Keep last 20
+      setHistory((prev) => [...prev, historyItem].slice(-20))
 
-      // Auto-scroll to results
       setTimeout(() => {
         resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 100)
 
-      // Only show error toast for non-"no_files" errors (no_files already handled above)
       if (data.error && data.error.type !== 'no_files') {
         toast({
           title: 'Error',
@@ -324,20 +439,17 @@ export default function Home() {
       setIsLoading(false)
       isQueryInProgressRef.current = false
     }
-  }, [timeRange, toast, currentChatId])
+  }, [timeRange, toast, currentChatId, chatFiles, loadChat, loadAllChats])
 
   const handleQuery = useCallback((queryText: string, timeRangeValue?: string, fileIds?: string[]) => {
-    // Prevent immediate duplicate submissions
     if (isQueryInProgressRef.current) {
       return
     }
 
-    // Clear any pending debounced calls
     if (debouncedQueryRef.current) {
       clearTimeout(debouncedQueryRef.current)
     }
 
-    // Debounce the actual query execution (500ms)
     debouncedQueryRef.current = setTimeout(() => {
       executeQuery(queryText, timeRangeValue, fileIds)
     }, 500)
@@ -351,10 +463,44 @@ export default function Home() {
     loadChat(chatId)
   }
 
+  const handleChatDelete = useCallback(async (chatId: string) => {
+    try {
+      const res = await fetch(`/api/chats?chatId=${encodeURIComponent(chatId)}`, {
+        method: 'DELETE',
+      }).catch(() => {
+        return null
+      })
+      
+      if (res && !res.ok) {
+        const errorData = await res.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to delete chat')
+      }
+
+      removeChatFromStorage(chatId)
+      localStorage.removeItem(`chat_files_${chatId}`)
+      
+      if (currentChatId === chatId) {
+        await createNewChat()
+      }
+      
+      await loadAllChats()
+      
+      toast({
+        title: 'Chat deleted',
+        description: 'The chat has been deleted successfully.',
+      })
+    } catch (error: any) {
+      toast({
+        title: 'Failed to delete chat',
+        description: error.message || 'Please try again',
+        variant: 'destructive',
+      })
+    }
+  }, [currentChatId, createNewChat, loadAllChats, toast])
+
   const handleMessageClick = (message: ChatMessage) => {
     setQuery(message.queryText)
     setResponse(message.response)
-    // Scroll to results
     setTimeout(() => {
       resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }, 100)
@@ -362,23 +508,36 @@ export default function Home() {
 
   const handleFilesChange = async (files: Array<{ id: string; fileName: string; rowCount: number }>) => {
     setChatFiles(files)
-    // Reload chat to get updated file list and ensure sync
+    
+    if (currentChatId) {
+      updateChatFilesInStorage(currentChatId, files)
+    }
+    
     if (currentChatId) {
       try {
         await loadChat(currentChatId)
       } catch (error) {
-        // Silently handle - files are in local state
+        // Files are in local state and localStorage
       }
     } else {
-      // If no chatId, try to get it from the latest chat or create one
       try {
         const res = await fetch('/api/chats', { method: 'POST' })
         if (res.ok) {
           const data = await res.json()
           if (data.chatId) {
             setCurrentChatId(data.chatId)
-            localStorage.setItem('currentChatId', data.chatId)
-            // Now add files to the new chat
+            setCurrentChatIdInStorage(data.chatId)
+            
+            const newChat: StoredChat = {
+              chatId: data.chatId,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+              title: 'New Chat',
+              attachedFiles: files,
+              messages: [],
+            }
+            saveChatToStorage(newChat)
+            
             if (files.length > 0) {
               await fetch('/api/chats', {
                 method: 'PUT',
@@ -388,13 +547,13 @@ export default function Home() {
                   action: 'addFile',
                   fileIds: files.map(f => f.id),
                 }),
-              })
+              }).catch(() => {})
               await loadChat(data.chatId)
             }
           }
         }
       } catch (error) {
-        // Silently handle
+        // Handle silently
       }
     }
   }
@@ -403,7 +562,6 @@ export default function Home() {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
   }
 
-  // Show login screen if not authenticated
   if (!authenticated) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
@@ -441,6 +599,7 @@ export default function Home() {
           chats={chats}
           currentChatId={currentChatId}
           onChatClick={handleChatClick}
+          onChatDelete={handleChatDelete}
           onNewChat={createNewChat}
           chatMessages={chatMessages}
           onMessageClick={handleMessageClick}

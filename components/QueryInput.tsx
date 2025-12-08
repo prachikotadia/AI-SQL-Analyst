@@ -5,14 +5,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { RunButton } from './RunButton'
-import { Paperclip, X, FileText, Loader2 } from 'lucide-react'
+import { Paperclip, X, FileText, Loader2, History } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
-
-interface AttachedFile {
-  id: string
-  fileName: string
-  rowCount: number
-}
+import { saveFileToStorage, getStoredFiles, getFileHistory, removeFileFromStorage, type StoredFile } from '@/lib/storage/localFileStorage'
 
 interface AttachedFile {
   id: string
@@ -41,24 +36,58 @@ export function QueryInput({
   const [timeRange, setTimeRange] = useState<string>('all_time')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [showFileHistory, setShowFileHistory] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
   // Sync chatFiles prop to attachedFiles state when chat changes
-  // This ensures files persist when switching chats or reloading
   useEffect(() => {
-    if (chatFiles && Array.isArray(chatFiles)) {
-      // Only update if chatFiles actually changed to avoid unnecessary re-renders
+    if (chatFiles && Array.isArray(chatFiles) && chatFiles.length > 0) {
       const currentFileIds = attachedFiles.map(f => f.id).sort().join(',')
       const newFileIds = chatFiles.map(f => f.id).sort().join(',')
       if (currentFileIds !== newFileIds) {
         setAttachedFiles(chatFiles)
       }
+    } else if (chatFiles && Array.isArray(chatFiles) && chatFiles.length === 0) {
+      if (chatId) {
+        const storedChatFiles = localStorage.getItem(`chat_files_${chatId}`)
+        if (storedChatFiles) {
+          try {
+            const files = JSON.parse(storedChatFiles)
+            if (files.length > 0) {
+              setAttachedFiles(files)
+              setTimeout(() => {
+                if (onFilesChange) {
+                  onFilesChange(files)
+                }
+              }, 0)
+            }
+          } catch (error) {
+            console.warn('Failed to restore files from localStorage:', error)
+          }
+        }
+      } else {
+        setAttachedFiles([])
+      }
     } else {
-      // Explicitly clear if chat has no files or chatFiles is undefined
       setAttachedFiles([])
     }
   }, [chatFiles, chatId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Close file history dropdown when clicking outside
+  useEffect(() => {
+    if (!showFileHistory) return
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('.file-history-container')) {
+        setShowFileHistory(false)
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showFileHistory])
 
   const handleFileSelect = async (file: File) => {
     if (!file) return
@@ -107,27 +136,40 @@ export function QueryInput({
         rowCount: data.rowCount,
       }
       
-      // Always ensure we have a chatId - create one if needed
       let chatIdToUse = chatId
       if (!chatIdToUse) {
-        // Create a new chat if none exists
         try {
           const createRes = await fetch('/api/chats', { method: 'POST' })
           if (createRes.ok) {
             const createData = await createRes.json()
             chatIdToUse = createData.chatId
-            // Notify parent that chat was created
             if (onChatCreated && chatIdToUse) {
               onChatCreated(chatIdToUse)
             }
           }
         } catch (error) {
-          // Continue without chatId - file will still be in local state
           console.warn('Failed to create chat:', error)
         }
       }
       
-      // Add file to chat via API (will create chat if chatId provided but doesn't exist)
+      let updatedFiles: AttachedFile[] = []
+      setAttachedFiles(prev => {
+        if (prev.some(f => f.id === newFile.id)) {
+          return prev
+        }
+        updatedFiles = [...prev, newFile]
+        if (chatIdToUse) {
+          localStorage.setItem(`chat_files_${chatIdToUse}`, JSON.stringify(updatedFiles))
+        }
+        return updatedFiles
+      })
+      
+      if (updatedFiles.length > 0 && onFilesChange) {
+        setTimeout(() => {
+          onFilesChange(updatedFiles)
+        }, 0)
+      }
+      
       if (chatIdToUse) {
         try {
           const res = await fetch('/api/chats', {
@@ -141,10 +183,8 @@ export function QueryInput({
           })
           const responseData = await res.json().catch(() => ({}))
           if (!res.ok) {
-            // Don't throw - file is uploaded, just log warning
             console.warn('Failed to add file to chat:', responseData.error)
           } else if (responseData?.chat) {
-            // Successfully added to chat - sync with server state
             const serverFiles = responseData.chat.attachedFiles || []
             const fileList = serverFiles.map((f: any) => ({
               id: f.id,
@@ -152,38 +192,64 @@ export function QueryInput({
               rowCount: f.data?.length || f.rowCount || 0,
             }))
             setAttachedFiles(fileList)
-            // Notify parent to sync
+            
+            try {
+              for (const serverFile of serverFiles) {
+                const storedFile: StoredFile = {
+                  id: serverFile.id,
+                  fileName: serverFile.fileName,
+                  tableName: serverFile.tableName || data.tableName,
+                  columns: serverFile.columns || data.columns || [],
+                  data: [],
+                  uploadedAt: new Date().toISOString(),
+                  rowCount: serverFile.rowCount || data.rowCount || 0,
+                }
+                saveFileToStorage(storedFile)
+              }
+              
+              if (chatIdToUse) {
+                localStorage.setItem(`chat_files_${chatIdToUse}`, JSON.stringify(fileList))
+              }
+            } catch (error) {
+              console.warn('Failed to save files to localStorage:', error)
+            }
+            
             if (onFilesChange) {
-              onFilesChange(fileList)
+              setTimeout(() => {
+                onFilesChange(fileList)
+              }, 0)
             }
           }
         } catch (error: any) {
-          // Don't throw - file is uploaded, just log warning
           console.warn('Failed to add file to chat:', error.message)
-          // Still update local state even if chat API fails
+          let fallbackFiles: AttachedFile[] = []
           setAttachedFiles(prev => {
             if (prev.some(f => f.id === newFile.id)) {
               return prev
             }
-            const updated = [...prev, newFile]
-            if (onFilesChange) {
-              onFilesChange(updated)
-            }
-            return updated
+            fallbackFiles = [...prev, newFile]
+            return fallbackFiles
           })
+          if (fallbackFiles.length > 0 && onFilesChange) {
+            setTimeout(() => {
+              onFilesChange(fallbackFiles)
+            }, 0)
+          }
         }
       } else {
-        // No chatId - just update local state
+        let noChatFiles: AttachedFile[] = []
         setAttachedFiles(prev => {
           if (prev.some(f => f.id === newFile.id)) {
             return prev
           }
-          const updated = [...prev, newFile]
-          if (onFilesChange) {
-            onFilesChange(updated)
-          }
-          return updated
+          noChatFiles = [...prev, newFile]
+          return noChatFiles
         })
+        if (noChatFiles.length > 0 && onFilesChange) {
+          setTimeout(() => {
+            onFilesChange(noChatFiles)
+          }, 0)
+        }
       }
 
       toast({
@@ -214,7 +280,6 @@ export function QueryInput({
   }
 
   const handleRemoveFile = async (fileId: string) => {
-    // Remove from chat FIRST via API, then update local state
     if (chatId) {
       try {
         const res = await fetch('/api/chats', {
@@ -236,7 +301,6 @@ export function QueryInput({
           description: error.message || 'Please try again',
           variant: 'destructive',
         })
-        // Don't remove from local state if API call failed
         return
       }
     }
@@ -244,9 +308,10 @@ export function QueryInput({
     const updatedFiles = attachedFiles.filter(f => f.id !== fileId)
     setAttachedFiles(updatedFiles)
     
-    // Notify parent of file change
     if (onFilesChange) {
-      onFilesChange(updatedFiles)
+      setTimeout(() => {
+        onFilesChange(updatedFiles)
+      }, 0)
     }
   }
 
@@ -269,7 +334,6 @@ export function QueryInput({
       e.preventDefault()
     }
     if (query.trim()) {
-      // Frontend validation: check if files are attached
       if (attachedFiles.length === 0) {
         toast({
           title: 'Attach a file',
@@ -284,7 +348,6 @@ export function QueryInput({
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Auto-run on Enter (but allow Shift+Enter for newline)
     if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       if (!isLoading && query.trim()) {
         e.preventDefault()
@@ -328,26 +391,134 @@ export function QueryInput({
             className="hidden"
             disabled={isLoading || isUploading}
           />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isLoading || isUploading}
-            className="neumorphic-button gap-2 relative"
-          >
-            {isUploading ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              <>
-                <Paperclip className="h-4 w-4" />
-                Attach CSV/Excel
-              </>
+          <div className="relative file-history-container">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || isUploading}
+              className="neumorphic-button gap-2 relative"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <Paperclip className="h-4 w-4" />
+                  Attach CSV/Excel
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setShowFileHistory(!showFileHistory)}
+              disabled={isLoading || isUploading}
+              className="neumorphic-button gap-2 ml-2"
+              title="Show file history"
+            >
+              <History className="h-4 w-4" />
+            </Button>
+            {showFileHistory && (
+              <div className="absolute top-full left-0 mt-2 z-50 bg-background border border-border rounded-lg shadow-lg p-2 max-h-64 overflow-y-auto min-w-[300px] file-history-container">
+                <div className="text-sm font-semibold mb-2 px-2">File History</div>
+                {getFileHistory().length === 0 ? (
+                  <div className="text-sm text-muted-foreground px-2 py-4">No previous files</div>
+                ) : (
+                  <div className="space-y-1">
+                    {getFileHistory().map((storedFile) => (
+                      <div
+                        key={storedFile.id}
+                        className="flex items-center justify-between p-2 hover:bg-muted rounded cursor-pointer group"
+                        onClick={async () => {
+                          try {
+                            setIsUploading(true)
+                            
+                            if (!storedFile.data || storedFile.data.length === 0) {
+                              toast({
+                                title: 'Cannot re-upload file',
+                                description: 'File data is not available. Please upload the file again manually.',
+                                variant: 'destructive',
+                              })
+                              setIsUploading(false)
+                              return
+                            }
+                            
+                            const csvContent = [
+                              storedFile.columns.map(c => c.name).join(','),
+                              ...storedFile.data.map(row =>
+                                storedFile.columns.map(col => {
+                                  const val = row[col.name]
+                                  if (val === null || val === undefined) return ''
+                                  const str = String(val)
+                                  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                                    return `"${str.replace(/"/g, '""')}"`
+                                  }
+                                  return str
+                                }).join(',')
+                              ),
+                            ].join('\n')
+                            
+                            if (csvContent.split('\n').length < 2) {
+                              toast({
+                                title: 'Invalid file data',
+                                description: 'File data is incomplete. Please upload the file again manually.',
+                                variant: 'destructive',
+                              })
+                              setIsUploading(false)
+                              return
+                            }
+                            
+                            const blob = new Blob([csvContent], { type: 'text/csv' })
+                            const file = new File([blob], storedFile.fileName, { type: 'text/csv' })
+                            
+                            await handleFileSelect(file)
+                            setShowFileHistory(false)
+                          } catch (error: any) {
+                            toast({
+                              title: 'Failed to re-upload file',
+                              description: error.message || 'Please try again',
+                              variant: 'destructive',
+                            })
+                          } finally {
+                            setIsUploading(false)
+                          }
+                        }}
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium truncate">{storedFile.fileName}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {storedFile.rowCount} rows • {new Date(storedFile.uploadedAt).toLocaleDateString()}
+                            </div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            removeFileFromStorage(storedFile.id)
+                            toast({
+                              title: 'File removed from history',
+                              description: storedFile.fileName,
+                            })
+                          }}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-destructive/10 rounded"
+                        >
+                          <X className="h-3 w-3 text-destructive" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
-          </Button>
+          </div>
           
           {/* Attached files chips */}
           {attachedFiles.map((file) => (

@@ -7,13 +7,11 @@ import { executeSql } from '@/lib/sql/executor'
 import { getCached, setCached, refreshCacheIfStale } from '@/lib/ml/cache'
 import { logEvaluation } from '@/lib/ml/eval'
 import { getMetricByName } from '@/lib/ml/metrics'
-import { generateChartSpec } from '@/lib/llm/chartGenerator'
-import { classifyQuery } from '@/lib/ml/classifier'
 import { getDefaultChartSpec } from '@/lib/chart/mapper'
 import { getFilesByIds, type FileMetadata } from '@/lib/data/fileRegistry'
 import { executeMultiFileQuery } from '@/lib/data/multiFileQueryEngine'
 import { buildPromptFromFiles } from '@/lib/llm/promptFromFiles'
-import { getChat, getChatFiles, addFileToChat, addMessageToChat, createChat } from '@/lib/data/chatStore'
+import { getChat, getChatFiles } from '@/lib/data/chatStore'
 import OpenAI from 'openai'
 import { repairJson } from '@/lib/llm/jsonRepair'
 import type { LLMResponse } from '@/types'
@@ -25,8 +23,29 @@ export async function POST(request: NextRequest) {
   let query = ''
 
   try {
-    // Validate request with Zod
-    const body = await request.json()
+    let body
+    try {
+      body = await request.json()
+    } catch (parseError: any) {
+      console.error('Failed to parse request body:', parseError.message)
+      return NextResponse.json(
+        {
+          data: [],
+          columns: [],
+          reasoning: 'Invalid request body. Expected JSON.',
+          preview_sql: null,
+          action_sql: null,
+          sql: '',
+          chartSpec: { type: null, xField: null, yField: null },
+          error: {
+            message: 'Invalid request body',
+            type: 'validation' as const,
+          },
+        },
+        { status: 400 }
+      )
+    }
+    
     const validationResult = QueryRequestSchema.safeParse(body)
     
     if (!validationResult.success) {
@@ -34,7 +53,7 @@ export async function POST(request: NextRequest) {
         {
           data: [],
           columns: [],
-          reasoning: '',
+          reasoning: `Invalid request: ${validationResult.error.errors[0]?.message || 'Request validation failed'}`,
           preview_sql: null,
           action_sql: null,
           sql: '',
@@ -56,50 +75,32 @@ export async function POST(request: NextRequest) {
     let attachedFiles: FileMetadata[] = []
 
     if (chatId) {
-      // Get or create chat (never return 404)
-      let chat = getChat(chatId)
-      if (!chat) {
-        // Create chat if it doesn't exist
-        createChat(chatId.startsWith('chat_') ? chatId : undefined)
-        chat = getChat(chatId)
-        if (!chat) {
-          const newChatId = createChat()
-          chat = getChat(newChatId)
-        }
-      }
-      
+      const chat = getChat(chatId)
       if (chat) {
-        // Get files from chat
         const chatFiles = getChatFiles(chat.chatId)
         finalFileIds = chatFiles.map((f: FileMetadata) => f.id)
         
-        // Add any new files from request to chat
+        // Add any new files from request
         if (fileIds && fileIds.length > 0) {
           const newFiles = getFilesByIds(fileIds)
           for (const file of newFiles) {
-            if (file) {
-              addFileToChat(chat.chatId, file)
-              if (!finalFileIds.includes(file.id)) {
-                finalFileIds.push(file.id)
-              }
+            if (file && !finalFileIds.includes(file.id)) {
+              finalFileIds.push(file.id)
             }
           }
         }
         
         attachedFiles = getFilesByIds(finalFileIds)
       } else {
-        // Fallback: use fileIds from request
         finalFileIds = fileIds || []
         attachedFiles = getFilesByIds(finalFileIds)
       }
     } else {
-      // No chatId, use fileIds from request
       finalFileIds = fileIds || []
       attachedFiles = getFilesByIds(finalFileIds)
     }
 
     if (attachedFiles.length === 0) {
-      // Return 200 with error object (soft error, not a server failure)
       return NextResponse.json(
         {
           data: [],
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check cache first, but refresh if stale (older than 1 hour)
+    // Check cache first
     const cacheKey = `${query}:${finalFileIds.sort().join(',')}`
     refreshCacheIfStale(cacheKey)
     const cached = getCached(cacheKey)
@@ -133,26 +134,55 @@ export async function POST(request: NextRequest) {
           chart: cached.chartSpec,
           metric_name: cached.metricName,
           query_category: undefined,
-          sql: cached.sql, // Legacy
+          sql: cached.sql,
         },
         tokensUsed: undefined,
       }
     } else {
-      // Generate SQL from LLM using attached files
-      const prompt = buildPromptFromFiles(query, finalFileIds, timeRange)
+      let prompt
+      try {
+        prompt = buildPromptFromFiles(query, finalFileIds, timeRange)
+        if (!prompt || prompt.trim().length === 0) {
+          throw new Error('Generated prompt is empty')
+        }
+      } catch (promptError: any) {
+        console.error('Failed to build prompt:', {
+          message: promptError.message,
+          stack: promptError.stack,
+          query,
+          fileIds: finalFileIds,
+        })
+        throw new Error(`Failed to build prompt: ${promptError.message}`)
+      }
       
-      // Use OpenRouter by default, fallback to LM Studio
-      const baseURL = process.env.OPENAI_BASE_URL || 'https://openrouter.ai/api/v1'
+      let baseURL = process.env.OPENAI_BASE_URL || 'https://openrouter.ai/api/v1'
       const apiKey = process.env.OPENAI_API_KEY || 'lm-studio'
-      const isLMStudio = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
       
-      // Log API configuration (without exposing full key)
-      console.log('LLM API Config:', {
-        baseURL: baseURL.includes('openrouter') ? 'OpenRouter' : baseURL,
-        hasApiKey: !!apiKey && apiKey !== 'lm-studio',
-        keyPrefix: apiKey ? apiKey.substring(0, 10) + '...' : 'none',
-        model: process.env.OPENAI_MODEL || 'openai/gpt-4o-mini',
-      })
+      // Fix incorrect base URLs
+      if (baseURL.includes('platform.openai.com')) {
+        if (apiKey && apiKey.startsWith('sk-')) {
+          baseURL = 'https://api.openai.com/v1'
+        } else {
+          baseURL = 'https://openrouter.ai/api/v1'
+        }
+      }
+      
+      const isLMStudio = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
+      const isOpenAI = baseURL.includes('api.openai.com')
+      
+      if (!isLMStudio && (!apiKey || apiKey === 'lm-studio')) {
+        throw new Error('OpenRouter API key is required. Please set OPENAI_API_KEY environment variable.')
+      }
+      
+      let modelName = process.env.OPENAI_MODEL || 'openai/gpt-4o-mini'
+      if (isOpenAI) {
+        if (modelName.startsWith('openai/')) {
+          modelName = modelName.replace('openai/', '')
+        }
+        if (!process.env.OPENAI_MODEL) {
+          modelName = 'gpt-4o-mini'
+        }
+      }
       
       const openai = new OpenAI({
         apiKey: apiKey,
@@ -160,7 +190,7 @@ export async function POST(request: NextRequest) {
       })
       
       const requestOptions: any = {
-        model: process.env.OPENAI_MODEL || 'openai/gpt-4o-mini',
+        model: modelName,
         messages: [
           {
             role: 'system',
@@ -175,7 +205,6 @@ export async function POST(request: NextRequest) {
         max_tokens: 3000,
       }
       
-      // OpenRouter and OpenAI support JSON mode
       if (!isLMStudio) {
         requestOptions.response_format = { type: 'json_object' }
       }
@@ -187,8 +216,29 @@ export async function POST(request: NextRequest) {
         console.error('LLM API Error:', {
           message: llmError.message,
           status: llmError.status,
+          statusText: llmError.statusText,
           response: llmError.response,
+          code: llmError.code,
+          cause: llmError.cause,
         })
+        
+        if (llmError.status === 401) {
+          throw new Error('Invalid API key. Please check your OPENAI_API_KEY environment variable.')
+        } else if (llmError.status === 403) {
+          throw new Error('API access forbidden. Please check your OPENAI_API_KEY and ensure it has the correct permissions.')
+        } else if (llmError.status === 429) {
+          const waitTimeMatch = llmError.message?.match(/try again in ([\dhm.]+)/i)
+          const waitTime = waitTimeMatch ? waitTimeMatch[1] : 'a few minutes'
+          const rateLimitMessage = llmError.message?.includes('TPM') || llmError.message?.includes('tokens per min')
+            ? `Rate limit exceeded (tokens per minute). Please try again in ${waitTime} or add a payment method to increase your limits.`
+            : `Rate limit exceeded. Please try again in ${waitTime} or upgrade your API plan.`
+          throw new Error(rateLimitMessage)
+        } else if (llmError.status === 500) {
+          throw new Error('LLM service error. Please try again or check your API configuration.')
+        } else if (llmError.code === 'ECONNREFUSED' || llmError.message?.includes('ECONNREFUSED')) {
+          throw new Error('Cannot connect to LLM service. Please check if LM Studio is running or your API endpoint is correct.')
+        }
+        
         throw new Error(`LLM API error: ${llmError.message || 'Failed to generate response'}`)
       }
       
@@ -224,20 +274,16 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Validate required fields (new format: sql, reasoning, table, chart)
       if (!parsed.sql) {
         throw new Error('Missing required field: sql')
       }
       if (!parsed.reasoning) {
         parsed.reasoning = 'No reasoning provided'
       }
-      // table and chart are optional - will use LLM's if provided, otherwise generate from results
 
-      // Validate SQL against schema
       const schemaValidation = validateSqlAgainstSchema(parsed.sql, finalFileIds)
       
       if (!schemaValidation.valid) {
-        // One retry with error message
         console.warn('SQL validation failed, retrying with error message:', schemaValidation.error)
         
         const retryPrompt = buildPromptFromFiles(
@@ -283,8 +329,6 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Convert to LLMResponse format
-      // Handle chart from LLM response (if provided)
       let chartSpec = getDefaultChartSpec([])
       if (parsed.chart && typeof parsed.chart === 'object') {
         chartSpec = {
@@ -309,11 +353,9 @@ export async function POST(request: NextRequest) {
         tokensUsed: completion.usage?.total_tokens,
       } as any
       
-      // Store LLM's table and chart data for potential use (accessible after execution)
       ;(llmResult as any).llmTableData = parsed.table && parsed.table !== 'not_available' ? parsed.table : null
       ;(llmResult as any).llmChartData = parsed.chart?.data && parsed.chart.data !== 'not_available' ? parsed.chart.data : null
 
-      // Cache the result
       setCached(cacheKey, {
         sql: llmResult.response.preview_sql || llmResult.response.sql || '',
         reasoning: llmResult.response.reasoning,
@@ -324,20 +366,14 @@ export async function POST(request: NextRequest) {
 
     const llmResponse = llmResult.response
 
-    // Determine which SQL to validate and execute
-    // New format: sql (always SELECT) - maps to preview_sql
-    // Old format: preview_sql (always SELECT) and action_sql (optional DML/DDL)
-    // Handle both formats
     const sqlToValidate = llmResponse.sql || llmResponse.preview_sql || ''
     let actionSql = llmResponse.action_sql
     
-    // If LLM returned "sql" field, use it as preview_sql
     if (llmResponse.sql && !llmResponse.preview_sql) {
       llmResponse.preview_sql = llmResponse.sql
     }
 
-    // Enforce rule: For read queries, action_sql must be "not_available"
-    // Detect read intent from query text (show, list, count, how many, etc.)
+    // Enforce read queries don't have action_sql
     const queryLower = query.toLowerCase()
     const readKeywords = ['show', 'list', 'count', 'how many', 'what are', 'find', 'get', 'display', 'select', 'filter', 'aggregate']
     const writeKeywords = ['insert', 'update', 'delete', 'create', 'alter', 'drop', 'add', 'remove', 'modify']
@@ -345,24 +381,22 @@ export async function POST(request: NextRequest) {
     const isReadQuery = readKeywords.some(kw => queryLower.includes(kw)) && 
                        !writeKeywords.some(kw => queryLower.includes(kw))
     
-    // If it's clearly a read query but action_sql is set, force it to "not_available"
     if (isReadQuery && actionSql && actionSql !== 'not_available' && actionSql !== null) {
-      // Log this as it shouldn't happen with the new prompt
       console.warn(`Read query "${query}" had action_sql set to "${actionSql}". Forcing to "not_available".`)
       actionSql = 'not_available'
       llmResponse.action_sql = 'not_available'
     }
 
-    // Validate preview SQL (must be SELECT)
     if (!sqlToValidate) {
       return NextResponse.json(
         {
           data: [],
           columns: [],
-          reasoning: llmResponse.reasoning,
+          reasoning: llmResponse.reasoning || 'No reasoning available.',
           preview_sql: null,
           action_sql: actionSql,
-          chartSpec: llmResponse.chart,
+          sql: '', // Legacy
+          chartSpec: llmResponse.chart || getDefaultChartSpec([]),
           error: {
             message: 'No preview SQL generated',
             type: 'validation' as const,
@@ -375,14 +409,12 @@ export async function POST(request: NextRequest) {
     let validation = await validateSql(sqlToValidate)
     let finalSqlToValidate = sqlToValidate
     
-    // Use corrected SQL if validator fixed table names (e.g., "cities" -> "cities_123456")
     if (validation.correctedSql) {
       finalSqlToValidate = validation.correctedSql
       llmResponse.preview_sql = validation.correctedSql
     }
     
     if (!validation.valid) {
-      // Try to fix once with repair prompt
       const repairResult = await nlToSql({
         query: `The previous SQL query failed validation: ${validation.error}. Please generate a corrected SQL query for: ${query}`,
         timeRange,
@@ -408,7 +440,8 @@ export async function POST(request: NextRequest) {
             reasoning: `Validation failed: ${validation.error}. The generated SQL query was not safe to execute.`,
             preview_sql: sqlToValidate,
             action_sql: actionSql,
-            chartSpec: llmResponse.chart,
+            sql: sqlToValidate, // Legacy
+            chartSpec: llmResponse.chart || getDefaultChartSpec([]),
             error: {
               message: validation.error || 'SQL validation failed',
               type: 'validation' as const,
@@ -418,7 +451,6 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Re-validate repaired SQL
       const repairedPreview = repairResult.response.preview_sql || repairResult.response.sql || ''
       const repairValidation = await validateSql(repairedPreview)
       if (!repairValidation.valid) {
@@ -439,7 +471,8 @@ export async function POST(request: NextRequest) {
             reasoning: `Validation failed after repair attempt: ${repairValidation.error}`,
             preview_sql: repairedPreview,
             action_sql: repairResult.response.action_sql || actionSql,
-            chartSpec: repairResult.response.chart || llmResponse.chart,
+            sql: repairedPreview, // Legacy
+            chartSpec: repairResult.response.chart || llmResponse.chart || getDefaultChartSpec([]),
             error: {
               message: repairValidation.error || 'SQL validation failed',
               type: 'validation' as const,
@@ -449,7 +482,6 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Use repaired response
       llmResponse.preview_sql = repairedPreview
       llmResponse.action_sql = repairResult.response.action_sql || actionSql
       if (repairResult.response.chart) {
@@ -457,20 +489,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Validate action_sql if present (for DML/DDL)
-    // Skip if it's "not_available" (which is correct for read queries)
+    // Validate and execute action_sql if present (for DML/DDL)
     if (actionSql && actionSql !== 'not_available' && actionSql !== null) {
       const actionValidation = await validateSql(actionSql)
       if (!actionValidation.valid) {
         llmResponse.action_sql = null
       } else {
-        // Execute action_sql for DML/DDL operations (CREATE, INSERT, UPDATE, DELETE, etc.)
         try {
           const actionResult = await executeSql(actionSql)
-          // For CREATE TABLE and other DDL, we don't need to return data
-          // But we log success
           if (actionResult.error) {
-            // If action fails, still show preview but note the error
             llmResponse.reasoning = `${llmResponse.reasoning || ''} Action SQL execution failed: ${actionResult.error}`
           }
         } catch (actionError: any) {
@@ -481,8 +508,13 @@ export async function POST(request: NextRequest) {
 
     const sqlToExecute = sanitizeSql(llmResponse.preview_sql || finalSqlToValidate)
     
-    // Execute against attached files (in-memory) instead of database
-    const executionResult = executeMultiFileQuery(sqlToExecute, finalFileIds)
+    let executionResult
+    try {
+      executionResult = executeMultiFileQuery(sqlToExecute, finalFileIds)
+    } catch (execError: any) {
+      console.error('Query execution error:', execError.message, execError.stack)
+      throw new Error(`Query execution failed: ${execError.message}`)
+    }
     
     if (executionResult.error) {
       const latency = Date.now() - startTime
@@ -514,34 +546,38 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use LLM's chart if provided and valid, otherwise generate from results
+    // Use LLM's chart if provided, otherwise generate from results
     let chartResult: { chartSpec: any; chartData: any[] }
     const llmChartData = (llmResult as any).llmChartData
     const llmTableData = (llmResult as any).llmTableData
     
     if (llmResponse.chart && llmResponse.chart.type && llmResponse.chart.type !== 'not_available' && 
         llmResponse.chart.xField && llmResponse.chart.yField) {
-      // Use LLM's chart specification
       chartResult = {
         chartSpec: llmResponse.chart,
         chartData: llmChartData || [],
       }
     } else {
-      // Generate chart from result shape (backend fallback)
-      chartResult = generateChartFromResult(
-        executionResult.data,
-        executionResult.columns,
-        query,
-        attachedFiles.reduce((sum, f) => sum + f.data.length, 0) // total row count
-      )
+      try {
+        chartResult = generateChartFromResult(
+          executionResult.data,
+          executionResult.columns,
+          query,
+          attachedFiles.reduce((sum, f) => sum + (f.data?.length || 0), 0)
+        )
+      } catch (chartError: any) {
+        console.error('Chart generation error:', chartError.message)
+        chartResult = {
+          chartSpec: { type: 'table', xField: null, yField: null },
+          chartData: executionResult.data,
+        }
+      }
     }
     
-    // Use LLM's table data if provided and valid, otherwise use execution results
     const data = llmTableData && Array.isArray(llmTableData) && llmTableData.length > 0
-      ? llmTableData.slice(0, 50) // Limit to 50 rows
+      ? llmTableData.slice(0, 50)
       : executionResult.data
 
-    // Get metric info if available
     let metricsInfo
     if (llmResponse.metric_name) {
       const metric = getMetricByName(llmResponse.metric_name)
@@ -564,7 +600,6 @@ export async function POST(request: NextRequest) {
       tokensUsed: llmResult.tokensUsed,
     })
 
-    // Ensure action_sql is properly formatted (null for "not_available" or actual SQL)
     const finalActionSql = (actionSql === 'not_available' || !actionSql) ? null : actionSql
 
     const response: QueryResponse = {
@@ -573,20 +608,17 @@ export async function POST(request: NextRequest) {
       reasoning: llmResponse.reasoning,
       preview_sql: llmResponse.preview_sql || sqlToExecute,
       action_sql: finalActionSql,
-      sql: sqlToExecute, // Legacy field for backward compatibility
-      chartSpec: chartResult.chartSpec, // Generated from results, not LLM
+      sql: sqlToExecute,
+      chartSpec: chartResult.chartSpec,
       metricsInfo,
       queryCategory: llmResponse.query_category,
       error: null,
     }
 
-    const responseValidation = QueryResponseSchema.safeParse(response)
-    if (!responseValidation.success) {
-      // Log validation errors in production
-    }
+    QueryResponseSchema.safeParse(response)
 
-    // Save message to chat if chatId provided
     if (chatId) {
+      const { addMessageToChat } = await import('@/lib/data/chatStore')
       addMessageToChat(chatId, query, response)
     }
 
@@ -594,7 +626,6 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     const latency = Date.now() - startTime
     
-    // Log error details for debugging
     console.error('Query API Error:', {
       message: error.message,
       stack: error.stack,
@@ -602,28 +633,72 @@ export async function POST(request: NextRequest) {
       latencyMs: latency,
     })
     
-    logEvaluation({
-      query: query || 'unknown',
-      sql: '',
-      success: false,
-      errorType: 'unknown',
-      latencyMs: latency,
-      rowCount: 0,
-    })
-
-    const errorResponse: QueryResponse = {
-      data: [],
-      columns: [],
-      reasoning: `An unexpected error occurred: ${error.message || 'Unknown error'}. Please check the server logs for details.`,
-      preview_sql: null,
-      action_sql: null,
-      sql: '', // Legacy
-      chartSpec: getDefaultChartSpec([]),
-      error: {
-        message: error.message || 'An unexpected error occurred',
-        type: 'unknown' as const,
-      },
+    try {
+      logEvaluation({
+        query: query || 'unknown',
+        sql: '',
+        success: false,
+        errorType: 'unknown',
+        latencyMs: latency,
+        rowCount: 0,
+      })
+    } catch (evalError: any) {
+      console.error('Failed to log evaluation:', evalError.message)
     }
-    return NextResponse.json(errorResponse, { status: 500 })
+
+    let defaultChartSpec
+    try {
+      defaultChartSpec = getDefaultChartSpec([])
+    } catch (chartError: any) {
+      defaultChartSpec = { type: null, xField: null, yField: null }
+    }
+
+    let errorType: 'validation' | 'execution' | 'llm' | 'unknown' | 'no_files' = 'unknown'
+    if (error.message?.includes('Rate limit') || error.message?.includes('429')) {
+      errorType = 'llm'
+    } else if (error.message?.includes('API key') || error.message?.includes('401') || error.message?.includes('403')) {
+      errorType = 'llm'
+    } else if (error.message?.includes('validation') || error.message?.includes('Invalid')) {
+      errorType = 'validation'
+    } else if (error.message?.includes('execution') || error.message?.includes('Query execution')) {
+      errorType = 'execution'
+    }
+
+    try {
+      const errorResponse: QueryResponse = {
+        data: [],
+        columns: [],
+        reasoning: error.message?.includes('Rate limit') 
+          ? `Rate limit exceeded: ${error.message}. This is a temporary limit from OpenAI. Please wait for the limit to reset or add a payment method to increase your limits.`
+          : `An error occurred: ${error.message || 'Unknown error'}. Please check the server logs for details.`,
+        preview_sql: null,
+        action_sql: null,
+        sql: '', // Legacy
+        chartSpec: defaultChartSpec,
+        error: {
+          message: error.message || 'An unexpected error occurred',
+          type: errorType,
+        },
+      }
+      return NextResponse.json(errorResponse, { status: 500 })
+    } catch (responseError: any) {
+      console.error('Failed to create error response:', responseError)
+      return NextResponse.json(
+        {
+          data: [],
+          columns: [],
+          reasoning: 'An unexpected server error occurred. Please try again.',
+          preview_sql: null,
+          action_sql: null,
+          sql: '',
+          chartSpec: { type: null, xField: null, yField: null },
+          error: {
+            message: 'Internal server error',
+            type: 'unknown' as const,
+          },
+        },
+        { status: 500 }
+      )
+    }
   }
 }

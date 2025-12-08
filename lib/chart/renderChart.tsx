@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import type { ChartSpec, ColumnMetadata } from '@/types'
 import { CHART_TYPES } from './chartTypes'
@@ -175,14 +175,133 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
     }
   }
 
-  // Enhanced margins for better readability
+  // Enhanced margins and spacing for clean presentation - no clipping
   const commonProps = {
     data,
-    margin: { top: 20, right: 30, left: 20, bottom: 60 },
+    margin: { top: 30, right: 40, left: 60, bottom: 100 }, // Increased for labels and spacing
   }
+  
+  // Calculate optimal bar size and spacing based on data density and available space
+  const dataLength = data.length
+  
+  // Dynamic bar sizing based on data count
+  // For few bars: make them wider, for many bars: make them narrower
+  let barSize: number | undefined
+  let barCategoryGap: string
+  
+  if (dataLength <= 5) {
+    // Few bars: make them wide and spaced out
+    barSize = undefined // Let Recharts auto-size
+    barCategoryGap = '20%'
+  } else if (dataLength <= 10) {
+    barSize = 50
+    barCategoryGap = '15%'
+  } else if (dataLength <= 20) {
+    barSize = 35
+    barCategoryGap = '10%'
+  } else if (dataLength <= 30) {
+    barSize = 25
+    barCategoryGap = '8%'
+  } else {
+    // Many bars: make them narrow and close together
+    barSize = 20
+    barCategoryGap = '5%'
+  }
+  
+  // Smart label truncation for long labels
+  const truncateLabel = (label: string, maxLength: number = 15): string => {
+    if (!label) return ''
+    if (label.length <= maxLength) return label
+    return label.substring(0, maxLength - 3) + '...'
+  }
+  
+  // Determine if labels should be rotated based on data density and label length
+  const shouldRotateLabels = () => {
+    if (dataLength > 15) return true
+    // Check if any label is long
+    const sampleLabels = data.slice(0, 5).map(d => String(d[xField] || ''))
+    return sampleLabels.some(label => label.length > 12)
+  }
+  
+  const labelAngle = shouldRotateLabels() ? -45 : 0
+  const labelHeight = shouldRotateLabels() ? 120 : 80
+  
+  // Calculate Y-axis domain based on actual data values
+  const calculateYAxisDomain = (): [number, number] => {
+    if (!yField || data.length === 0) return [0, 100]
+    
+    // Extract all yField values and convert to numbers
+    const values = data
+      .map(row => {
+        const val = row[yField]
+        if (val === null || val === undefined) return null
+        const num = typeof val === 'number' ? val : Number(val)
+        return isNaN(num) ? null : num
+      })
+      .filter((v): v is number => v !== null)
+    
+    if (values.length === 0) return [0, 100]
+    
+    const minValue = Math.min(...values)
+    const maxValue = Math.max(...values)
+    
+    // Add 10% padding to the top, but ensure minimum is 0 for positive values
+    const padding = maxValue * 0.1
+    const domainMax = maxValue + padding
+    
+    // If all values are positive, start from 0, otherwise use min with padding
+    const domainMin = minValue >= 0 ? 0 : minValue - padding
+    
+    return [domainMin, domainMax]
+  }
+  
+  const yAxisDomain = calculateYAxisDomain()
 
-  // Format field names for display
+  // Format field names for display with better labels
   const formatFieldName = (fieldName: string): string => {
+    if (!fieldName) return ''
+    
+    // Map common column names to human-readable labels
+    const labelMap: Record<string, string> = {
+      'City': 'City',
+      'State': 'State',
+      'city': 'City',
+      'state': 'State',
+      'LonD': 'Longitude (Degrees)',
+      'LonM': 'Longitude (Minutes)',
+      'LonS': 'Longitude (Seconds)',
+      'EW': 'East/West',
+      'LatD': 'Latitude (Degrees)',
+      'LatM': 'Latitude (Minutes)',
+      'LatS': 'Latitude (Seconds)',
+      'NS': 'North/South',
+      'count': 'Number of Cities',
+      'Count': 'Number of Cities',
+      'COUNT': 'Number of Cities',
+      'total': 'Total',
+      'Total': 'Total',
+      'avg': 'Average',
+      'Avg': 'Average',
+      'AVG': 'Average',
+      'sum': 'Sum',
+      'Sum': 'Sum',
+      'SUM': 'Sum',
+    }
+    
+    // Check exact match first
+    if (labelMap[fieldName]) {
+      return labelMap[fieldName]
+    }
+    
+    // Check case-insensitive match
+    const lowerField = fieldName.toLowerCase()
+    for (const [key, value] of Object.entries(labelMap)) {
+      if (key.toLowerCase() === lowerField) {
+        return value
+      }
+    }
+    
+    // Default formatting: replace underscores, capitalize words
     return fieldName
       .replace(/_/g, ' ')
       .replace(/\b\w/g, l => l.toUpperCase())
@@ -228,59 +347,138 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
 
   switch (chartSpec.type) {
     case CHART_TYPES.BAR:
-      return {
-        component: (
+      const BarChartWrapper = () => {
+        const scrollRef = useRef<HTMLDivElement>(null)
+        
+        useEffect(() => {
+          // Center the chart vertically on mount
+          if (scrollRef.current) {
+            const container = scrollRef.current
+            const scrollHeight = container.scrollHeight
+            const clientHeight = container.clientHeight
+            // Scroll to center
+            container.scrollTop = (scrollHeight - clientHeight) / 2
+          }
+        }, [])
+        
+        return (
           <div className="space-y-4">
-            <div className="bg-muted/50 rounded-lg p-4 border border-border">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
+            <div className="bg-muted/50 rounded-lg p-3 border border-border">
+              <div className="flex gap-6 text-sm">
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-muted-foreground">X-Axis:</span>
-                  <p className="mt-1 font-medium">{formatFieldName(xField)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Categories or groups being compared</p>
+                  <span className="font-medium">{formatFieldName(xField)}</span>
                 </div>
-                <div>
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-muted-foreground">Y-Axis:</span>
-                  <p className="mt-1 font-medium">{formatFieldName(yField)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Measured values or quantities</p>
+                  <span className="font-medium">{formatFieldName(yField)}</span>
                 </div>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={height}>
-              <BarChart {...commonProps}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+            <div 
+              ref={scrollRef}
+              className="overflow-x-auto overflow-y-scroll border border-border rounded-lg p-4 bg-background" 
+              style={{ cursor: 'grab', maxHeight: '600px', height: '600px', scrollBehavior: 'smooth' }}
+            >
+              <div className="flex items-center justify-center" style={{ minWidth: '100%', minHeight: '100%', paddingTop: '20px', paddingBottom: '20px' }}>
+                <div style={{ width: '100%' }}>
+                  <ResponsiveContainer width="100%" height={height}>
+                    <BarChart 
+                      {...commonProps} 
+                      barSize={barSize} 
+                      barCategoryGap={barCategoryGap}
+                      maxBarSize={dataLength <= 10 ? 80 : dataLength <= 20 ? 60 : 40}
+                    >
+                    <CartesianGrid 
+                  strokeDasharray="3 3" 
+                  stroke="hsl(var(--border))" 
+                  opacity={0.15}
+                  vertical={false}
+                />
                 <XAxis 
                   dataKey={xField}
-                  label={{ value: formatFieldName(xField), position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: 'hsl(var(--foreground))', fontSize: 14, fontWeight: 600 } }}
-                  angle={data.length > 10 ? -45 : 0}
-                  textAnchor={data.length > 10 ? "end" : "middle"}
-                  height={data.length > 10 ? 100 : 80}
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                  interval={data.length > 20 ? 'preserveStartEnd' : 0}
+                  label={{ 
+                    value: formatFieldName(xField), 
+                    position: 'insideBottom', 
+                    offset: -10, 
+                    style: { 
+                      textAnchor: 'middle', 
+                      fill: 'hsl(var(--foreground))', 
+                      fontSize: 13, 
+                      fontWeight: 600 
+                    } 
+                  }}
+                  angle={labelAngle}
+                  textAnchor={labelAngle < 0 ? "end" : "middle"}
+                  height={labelHeight}
+                  tick={{ 
+                    fill: 'hsl(var(--muted-foreground))', 
+                    fontSize: 11
+                  }}
+                  tickFormatter={(value) => truncateLabel(String(value), 18)}
+                  interval="preserveStartEnd"
+                  minTickGap={labelAngle < 0 ? 20 : 10}
+                  allowDataOverflow={false}
                 />
                 <YAxis 
-                  label={{ value: formatFieldName(yField), angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: 'hsl(var(--foreground))', fontSize: 14, fontWeight: 600 } }}
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                  tickFormatter={formatYAxis}
-                />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend 
-                wrapperStyle={{ paddingTop: '20px' }}
-                iconType="rect"
-              />
-              <Bar 
-                dataKey={yField} 
-                fill={COLORS[0]}
-                radius={[8, 8, 0, 0]}
-                name={yField.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-              >
-                {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+                      label={{ 
+                        value: formatFieldName(yField), 
+                        angle: -90, 
+                        position: 'insideLeft', 
+                        offset: -10,
+                        style: { 
+                          textAnchor: 'middle', 
+                          fill: 'hsl(var(--foreground))', 
+                          fontSize: 16, 
+                          fontWeight: 700 
+                        } 
+                      }}
+                      tick={{ 
+                        fill: 'hsl(var(--foreground))', 
+                        fontSize: 14,
+                        fontWeight: 500
+                      }}
+                      tickFormatter={formatYAxis}
+                      width={75}
+                      allowDecimals={false}
+                      domain={yAxisDomain}
+                    />
+                    <Tooltip 
+                      content={<CustomTooltip />}
+                      cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: '25px', paddingBottom: '10px' }}
+                      iconType="rect"
+                      iconSize={12}
+                      fontSize={11}
+                    />
+                    <Bar 
+                      dataKey={yField} 
+                      fill={COLORS[0]}
+                      radius={[6, 6, 0, 0]}
+                      name={formatFieldName(yField)}
+                      isAnimationActive={true}
+                      animationDuration={800}
+                    >
+                      {data.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
+                    </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
           </div>
-        ),
+        )
+      }
+      
+      return {
+        component: <BarChartWrapper />,
       }
 
     case CHART_TYPES.LINE:
@@ -290,80 +488,129 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
       return {
         component: (
           <div className="space-y-4">
-            <div className="bg-muted/50 rounded-lg p-4 border border-border">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
+            <div className="bg-muted/50 rounded-lg p-3 border border-border">
+              <div className="flex gap-6 text-sm">
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-muted-foreground">X-Axis:</span>
-                  <p className="mt-1 font-medium">{formatFieldName(xField)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Time period or sequence</p>
+                  <span className="font-medium">{formatFieldName(xField)}</span>
                 </div>
-                <div>
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-muted-foreground">Y-Axis:</span>
-                  <p className="mt-1 font-medium">{formatFieldName(yField)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Measured values over time</p>
+                  <span className="font-medium">{formatFieldName(yField)}</span>
                 </div>
                 {hasMultipleSeries && seriesField && (
-                  <div className="col-span-2">
+                  <div className="flex items-center gap-2">
                     <span className="font-semibold text-muted-foreground">Series:</span>
-                    <p className="mt-1 font-medium">{formatFieldName(seriesField)}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Different lines represent different categories</p>
+                    <span className="font-medium">{formatFieldName(seriesField)}</span>
                   </div>
                 )}
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={height}>
-              <LineChart {...commonProps}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
-                <XAxis 
-                  dataKey={xField}
-                  label={{ value: formatFieldName(xField), position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: 'hsl(var(--foreground))', fontSize: 14, fontWeight: 600 } }}
-                  angle={data.length > 10 ? -45 : 0}
-                  textAnchor={data.length > 10 ? "end" : "middle"}
-                  height={data.length > 10 ? 100 : 80}
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                  interval={data.length > 20 ? 'preserveStartEnd' : 0}
-                />
-                <YAxis 
-                  label={{ value: formatFieldName(yField), angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: 'hsl(var(--foreground))', fontSize: 14, fontWeight: 600 } }}
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
-                  tickFormatter={formatYAxis}
-                />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend 
-                wrapperStyle={{ paddingTop: '20px' }}
-                iconType="line"
-              />
-              {hasMultipleSeries && seriesField ? (
-                // Multiple series - render one line per series
-                (() => {
-                  const uniqueSeries = Array.from(new Set(data.map(row => row[seriesField]).filter(Boolean)))
-                  return uniqueSeries.map((seriesValue, idx) => (
-                    <Line
-                      key={String(seriesValue)}
-                      type="monotone"
-                      dataKey={yField}
-                      data={data.filter(row => row[seriesField] === seriesValue)}
-                      stroke={COLORS[idx % COLORS.length]}
-                      strokeWidth={2.5}
-                      dot={{ r: 4, fill: COLORS[idx % COLORS.length] }}
-                      activeDot={{ r: 6 }}
-                      name={String(seriesValue)}
+            <div className="overflow-x-auto overflow-y-scroll border border-border rounded-lg p-4 bg-background" style={{ cursor: 'grab', maxHeight: '600px', height: '600px', scrollBehavior: 'smooth' }}>
+              <div style={{ minWidth: '100%', paddingBottom: '20px', minHeight: height + (labelAngle < 0 ? 150 : 100) }}>
+                <ResponsiveContainer width="100%" height={height}>
+                  <LineChart {...commonProps}>
+                    <CartesianGrid 
+                      strokeDasharray="3 3" 
+                      stroke="hsl(var(--border))" 
+                      opacity={0.15}
+                      vertical={false}
                     />
-                  ))
-                })()
-              ) : (
-                <Line
-                  type="monotone"
-                  dataKey={yField}
-                  stroke={COLORS[0]}
-                  strokeWidth={3}
-                  dot={{ r: 5, fill: COLORS[0] }}
-                  activeDot={{ r: 8, fill: COLORS[0] }}
-                  name={yField.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
+                    <XAxis 
+                      dataKey={xField}
+                      label={{ 
+                        value: formatFieldName(xField), 
+                        position: 'insideBottom', 
+                        offset: -10, 
+                        style: { 
+                          textAnchor: 'middle', 
+                          fill: 'hsl(var(--foreground))', 
+                          fontSize: 13, 
+                          fontWeight: 600 
+                        } 
+                      }}
+                      angle={labelAngle}
+                      textAnchor={labelAngle < 0 ? "end" : "middle"}
+                      height={labelHeight}
+                      tick={{ 
+                        fill: 'hsl(var(--muted-foreground))', 
+                        fontSize: 11
+                      }}
+                      tickFormatter={(value) => truncateLabel(String(value), 18)}
+                      interval="preserveStartEnd"
+                      minTickGap={labelAngle < 0 ? 20 : 10}
+                      allowDataOverflow={false}
+                    />
+                    <YAxis 
+                      label={{ 
+                        value: formatFieldName(yField), 
+                        angle: -90, 
+                        position: 'insideLeft', 
+                        offset: -10,
+                        style: { 
+                          textAnchor: 'middle', 
+                          fill: 'hsl(var(--foreground))', 
+                          fontSize: 16, 
+                          fontWeight: 700 
+                        } 
+                      }}
+                      tick={{ 
+                        fill: 'hsl(var(--foreground))', 
+                        fontSize: 14,
+                        fontWeight: 500
+                      }}
+                      tickFormatter={formatYAxis}
+                      width={75}
+                      allowDecimals={false}
+                      domain={yAxisDomain}
+                    />
+                    <Tooltip 
+                      content={<CustomTooltip />}
+                      cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1, strokeDasharray: '5 5' }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: '25px', paddingBottom: '10px' }}
+                      iconType="line"
+                      iconSize={14}
+                      fontSize={11}
+                    />
+                    {hasMultipleSeries && seriesField ? (
+                      // Multiple series - render one line per series (lines on top with zIndex)
+                      (() => {
+                        const uniqueSeries = Array.from(new Set(data.map(row => row[seriesField]).filter(Boolean)))
+                        return uniqueSeries.map((seriesValue, idx) => (
+                          <Line
+                            key={String(seriesValue)}
+                            type="monotone"
+                            dataKey={yField}
+                            data={data.filter(row => row[seriesField] === seriesValue)}
+                            stroke={COLORS[idx % COLORS.length]}
+                            strokeWidth={2.5}
+                            dot={{ r: 4, fill: COLORS[idx % COLORS.length], strokeWidth: 2 }}
+                            activeDot={{ r: 6, strokeWidth: 2 }}
+                            name={String(seriesValue)}
+                            isAnimationActive={true}
+                            animationDuration={800}
+                          />
+                        ))
+                      })()
+                    ) : (
+                      <Line
+                        type="monotone"
+                        dataKey={yField}
+                        stroke={COLORS[0]}
+                        strokeWidth={3}
+                        dot={{ r: 5, fill: COLORS[0], strokeWidth: 2 }}
+                        activeDot={{ r: 8, fill: COLORS[0], strokeWidth: 2 }}
+                        name={formatFieldName(yField)}
+                        isAnimationActive={true}
+                        animationDuration={800}
+                      />
+                    )}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
         ),
       }
@@ -372,50 +619,101 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
       return {
         component: (
           <div className="space-y-4">
-            <div className="bg-muted/50 rounded-lg p-4 border border-border">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
+            <div className="bg-muted/50 rounded-lg p-3 border border-border">
+              <div className="flex gap-6 text-sm">
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-muted-foreground">X-Axis:</span>
-                  <p className="mt-1 font-medium">{formatFieldName(xField)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Time period or sequence</p>
+                  <span className="font-medium">{formatFieldName(xField)}</span>
                 </div>
-                <div>
+                <div className="flex items-center gap-2">
                   <span className="font-semibold text-muted-foreground">Y-Axis:</span>
-                  <p className="mt-1 font-medium">{formatFieldName(yField)}</p>
-                  <p className="text-xs text-muted-foreground mt-1">Cumulative or stacked values</p>
+                  <span className="font-medium">{formatFieldName(yField)}</span>
                 </div>
               </div>
             </div>
-            <ResponsiveContainer width="100%" height={height}>
-              <AreaChart {...commonProps}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis 
-                  dataKey={xField}
-                  label={{ value: formatFieldName(xField), position: 'insideBottom', offset: -5, style: { textAnchor: 'middle', fill: 'hsl(var(--foreground))', fontSize: 14, fontWeight: 600 } }}
-                  angle={-45}
-                  textAnchor="end"
-                  height={100}
-                />
-                <YAxis 
-                  label={{ value: formatFieldName(yField), angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: 'hsl(var(--foreground))', fontSize: 14, fontWeight: 600 } }}
-                />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: 'hsl(var(--popover))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: 'var(--radius)',
-                }}
-              />
-              <Legend />
-              <Area
-                type="monotone"
-                dataKey={yField}
-                stroke={COLORS[0]}
-                fill={COLORS[0]}
-                fillOpacity={0.6}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+            <div className="overflow-x-auto overflow-y-scroll border border-border rounded-lg p-4 bg-background" style={{ cursor: 'grab', maxHeight: '600px', height: '600px', scrollBehavior: 'smooth' }}>
+              <div style={{ minWidth: '100%', paddingBottom: '20px', minHeight: height + (labelAngle < 0 ? 150 : 100) }}>
+                <ResponsiveContainer width="100%" height={height}>
+                  <AreaChart {...commonProps}>
+                    <CartesianGrid 
+                      strokeDasharray="3 3" 
+                      stroke="hsl(var(--border))" 
+                      opacity={0.15}
+                      vertical={false}
+                    />
+                    <XAxis 
+                      dataKey={xField}
+                      label={{ 
+                        value: formatFieldName(xField), 
+                        position: 'insideBottom', 
+                        offset: -10, 
+                        style: { 
+                          textAnchor: 'middle', 
+                          fill: 'hsl(var(--foreground))', 
+                          fontSize: 13, 
+                          fontWeight: 600 
+                        } 
+                      }}
+                      angle={labelAngle}
+                      textAnchor={labelAngle < 0 ? "end" : "middle"}
+                      height={labelHeight}
+                      tick={{ 
+                        fill: 'hsl(var(--muted-foreground))', 
+                        fontSize: 11
+                      }}
+                      tickFormatter={(value) => truncateLabel(String(value), 18)}
+                      interval="preserveStartEnd"
+                      minTickGap={labelAngle < 0 ? 20 : 10}
+                      allowDataOverflow={false}
+                    />
+                    <YAxis 
+                      label={{ 
+                        value: formatFieldName(yField), 
+                        angle: -90, 
+                        position: 'insideLeft', 
+                        offset: -10,
+                        style: { 
+                          textAnchor: 'middle', 
+                          fill: 'hsl(var(--foreground))', 
+                          fontSize: 16, 
+                          fontWeight: 700 
+                        } 
+                      }}
+                      tick={{ 
+                        fill: 'hsl(var(--foreground))', 
+                        fontSize: 14,
+                        fontWeight: 500
+                      }}
+                      tickFormatter={formatYAxis}
+                      width={75}
+                      allowDecimals={false}
+                      domain={yAxisDomain}
+                    />
+                    <Tooltip 
+                      content={<CustomTooltip />}
+                      cursor={{ stroke: 'hsl(var(--border))', strokeWidth: 1, strokeDasharray: '5 5' }}
+                    />
+                    <Legend 
+                      wrapperStyle={{ paddingTop: '25px', paddingBottom: '10px' }}
+                      iconType="circle"
+                      iconSize={12}
+                      fontSize={11}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey={yField}
+                      stroke={COLORS[0]}
+                      fill={COLORS[0]}
+                      fillOpacity={0.4}
+                      strokeWidth={2.5}
+                      name={formatFieldName(yField)}
+                      isAnimationActive={true}
+                      animationDuration={800}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
         ),
       }
