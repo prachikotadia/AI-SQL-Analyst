@@ -86,6 +86,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Attachments API] Received file:', file.name, 'Size:', file.size, 'Type:', file.type)
+    }
+
     // Validate file type
     const validExtensions = ['.csv', '.xlsx', '.xls']
     const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
@@ -104,7 +108,25 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const { data, headers, columns } = await parseFile(file)
+    let data: any[] = []
+    let headers: string[] = []
+    let columns: Array<{ name: string; type: string }> = []
+    
+    try {
+      const parsed = await parseFile(file)
+      data = parsed.data
+      headers = parsed.headers
+      columns = parsed.columns
+    } catch (parseError: unknown) {
+      const parseErrorMessage = parseError instanceof Error ? parseError.message : 'Failed to parse file'
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[Attachments API] Parse error:', parseErrorMessage, parseError instanceof Error ? parseError.stack : '')
+      }
+      return NextResponse.json(
+        { error: `Failed to parse file: ${parseErrorMessage}` },
+        { status: 400 }
+      )
+    }
 
     if (data.length === 0) {
       return NextResponse.json({
@@ -136,9 +158,6 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    // ALWAYS add file to chatStore IMMEDIATELY in the same request
-    // This ensures files persist even if serverless resets between upload and addFile calls
-    // Use dynamic import to avoid circular dependency issues
     let actualChatId = chatId
     try {
       const { getChat, createChat, addFileToChat, getChatFiles } = await import('@/lib/data/chatStore')
@@ -146,18 +165,25 @@ export async function POST(request: NextRequest) {
       let chat = getChat(chatId)
       
       if (!chat) {
-        // Create chat if it doesn't exist
+        if (process.env.NODE_ENV === 'development') {
+          console.log('[Attachments API] Chat not found, creating new chat with ID:', chatId)
+        }
         actualChatId = createChat(chatId.startsWith('chat_') ? chatId : undefined)
         chat = getChat(actualChatId)
         
-        // If still null, try one more time with generated ID
         if (!chat) {
+          if (process.env.NODE_ENV === 'development') {
+            console.log('[Attachments API] First create failed, trying again with generated ID')
+          }
           actualChatId = createChat()
           chat = getChat(actualChatId)
         }
       }
       
       if (!chat) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[Attachments API] Failed to create chat after multiple attempts')
+        }
         return NextResponse.json(
           { error: 'Failed to create or retrieve chat. Please try again.' },
           { status: 500 }
@@ -165,12 +191,20 @@ export async function POST(request: NextRequest) {
       }
       
       const fullFileMetadata = { ...fileMetadata, id: fileId }
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Attachments API] Adding file to chat:', chat.chatId, 'File ID:', fileId)
+      }
+      
       addFileToChat(chat.chatId, fullFileMetadata)
       
-      // Verify it was added
       const verifyFiles = getChatFiles(chat.chatId)
       const fileExists = verifyFiles.some(f => f.id === fileId)
+      
       if (!fileExists) {
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[Attachments API] File verification failed. Files in chat:', verifyFiles.map(f => f.id))
+        }
         return NextResponse.json(
           { error: 'File was registered but failed to attach to chat. Please try again.' },
           { status: 500 }
@@ -178,10 +212,23 @@ export async function POST(request: NextRequest) {
       }
       
       actualChatId = chat.chatId
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[Attachments API] File successfully attached to chat:', actualChatId)
+      }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const errorStack = error instanceof Error ? error.stack : undefined
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[Attachments API] Chat store error:', errorMessage, errorStack)
+      }
+      
       return NextResponse.json(
-        { error: `Failed to attach file to chat: ${errorMessage}` },
+        { 
+          error: `Failed to attach file to chat: ${errorMessage}`,
+          details: process.env.NODE_ENV === 'development' ? errorStack : undefined
+        },
         { status: 500 }
       )
     }
@@ -197,8 +244,17 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to process file'
+    const errorStack = error instanceof Error ? error.stack : undefined
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.error('[Attachments API] Error:', errorMessage, errorStack)
+    }
+    
     return NextResponse.json(
-      { error: errorMessage },
+      { 
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? errorStack : undefined
+      },
       { status: 500 }
     )
   }

@@ -353,12 +353,20 @@ export function QueryInput({
     
     setIsUploading(true)
     try {
-      const response = await fetch('/sample-data.csv')
+      const response = await fetch('/sample-data.csv', {
+        cache: 'no-cache',
+      })
+      
       if (!response.ok) {
-        throw new Error('Failed to fetch sample data')
+        throw new Error(`Failed to fetch sample data: ${response.status} ${response.statusText}`)
       }
       
       const blob = await response.blob()
+      
+      if (blob.size === 0) {
+        throw new Error('Sample data file is empty')
+      }
+      
       const file = new File([blob], 'sample-data.csv', { type: 'text/csv' })
       
       const formData = new FormData()
