@@ -11,7 +11,11 @@ import { registerFile } from '@/lib/data/fileRegistry'
 async function parseFile(file: File): Promise<{ data: any[]; headers: string[]; columns: Array<{ name: string; type: string }> }> {
   const bytes = await file.arrayBuffer()
   const buffer = Buffer.from(bytes)
-  const tempPath = join(tmpdir(), `attachment_${Date.now()}_${file.name}`)
+  
+  // Use /tmp directory (works in serverless environments)
+  // Sanitize filename to prevent path traversal
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const tempPath = join(tmpdir(), `attachment_${Date.now()}_${sanitizedFileName}`)
 
   try {
     await writeFile(tempPath, buffer)
@@ -63,8 +67,9 @@ async function parseFile(file: File): Promise<{ data: any[]; headers: string[]; 
   } finally {
     try {
       await unlink(tempPath)
-    } catch (error) {
+    } catch (error: unknown) {
       // Failed to delete temp file, continue anyway
+      // In serverless, temp files are auto-cleaned
     }
   }
 }
@@ -173,9 +178,10 @@ export async function POST(request: NextRequest) {
       }
       
       actualChatId = chat.chatId
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
       return NextResponse.json(
-        { error: `Failed to attach file to chat: ${error.message || 'Unknown error'}` },
+        { error: `Failed to attach file to chat: ${errorMessage}` },
         { status: 500 }
       )
     }
@@ -189,9 +195,10 @@ export async function POST(request: NextRequest) {
       columns: columns.map(c => ({ name: c.name, type: c.type })),
       chatId: actualChatId || chatId, // Return chatId so frontend knows which chat has the file
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to process file'
     return NextResponse.json(
-      { error: error.message || 'Failed to process file' },
+      { error: errorMessage },
       { status: 500 }
     )
   }

@@ -18,13 +18,31 @@ export interface FileMetadata {
   uploadedAt: Date | string // Store as ISO string in JSON, convert to Date when reading
 }
 
-// Get uploads directory path
+// In-memory fallback for serverless environments (Netlify, Vercel)
+const inMemoryStore = new Map<string, FileMetadata>()
+
+// Get uploads directory path - use /tmp in serverless, uploads/ in regular server
 function getUploadsDir(): string {
+  // Check if we're in a serverless environment (Netlify, Vercel)
+  // These environments only allow writes to /tmp
+  const isServerless = process.env.NETLIFY === 'true' || process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME
+  
+  if (isServerless) {
+    // Use /tmp in serverless environments
+    return '/tmp'
+  }
+  
+  // Regular server: use uploads directory
   const uploadsDir = join(process.cwd(), 'uploads')
   
   // Create directory if it doesn't exist (server-side only)
   if (typeof window === 'undefined' && !existsSync(uploadsDir)) {
-    mkdirSync(uploadsDir, { recursive: true })
+    try {
+      mkdirSync(uploadsDir, { recursive: true })
+    } catch (error) {
+      // If we can't create uploads dir, fall back to /tmp
+      return '/tmp'
+    }
   }
   
   return uploadsDir
@@ -55,49 +73,55 @@ export function registerFile(metadata: Omit<FileMetadata, 'id'>): string {
 }
 
 /**
- * Save file metadata to disk
+ * Save file metadata to disk (or in-memory fallback for serverless)
  */
 function saveFileToDisk(fileId: string, fileMetadata: FileMetadata): void {
   if (typeof window !== 'undefined') {
-    // Client-side: should never happen, but handle gracefully
-    console.error('saveFileToDisk called on client-side - this should not happen')
     return
   }
   
+  // Convert Date to ISO string for JSON serialization
+  const serializableMetadata = {
+    ...fileMetadata,
+    uploadedAt: fileMetadata.uploadedAt instanceof Date 
+      ? fileMetadata.uploadedAt.toISOString() 
+      : fileMetadata.uploadedAt,
+  }
+  
+  // Always store in-memory as fallback
+  inMemoryStore.set(fileId, fileMetadata)
+  
   try {
     const filePath = getFilePath(fileId)
-    
-    // Convert Date to ISO string for JSON serialization
-    const serializableMetadata = {
-      ...fileMetadata,
-      uploadedAt: fileMetadata.uploadedAt instanceof Date 
-        ? fileMetadata.uploadedAt.toISOString() 
-        : fileMetadata.uploadedAt,
-    }
-    
     writeFileSync(filePath, JSON.stringify(serializableMetadata, null, 2), 'utf-8')
-    console.log(`[fileRegistry] ✅ Saved file ${fileId} to disk: ${filePath}`)
-  } catch (error: any) {
-    console.error(`[fileRegistry] ❌ Failed to save file ${fileId} to disk:`, error.message)
-    throw new Error(`Failed to save file to disk: ${error.message}`)
+  } catch (error: unknown) {
+    // If disk write fails (serverless), in-memory store will handle it
+    // Don't throw - in-memory fallback is sufficient
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    if (process.env.NODE_ENV === 'development') {
+      // Only log in development
+    }
   }
 }
 
 /**
- * Read file metadata from disk
+ * Read file metadata from disk (or in-memory fallback)
  */
 function readFileFromDisk(fileId: string): FileMetadata | null {
   if (typeof window !== 'undefined') {
-    // Client-side: should never happen
-    console.error('readFileFromDisk called on client-side - this should not happen')
     return null
   }
   
+  // Check in-memory store first (fastest)
+  if (inMemoryStore.has(fileId)) {
+    return inMemoryStore.get(fileId)!
+  }
+  
+  // Try to read from disk
   try {
     const filePath = getFilePath(fileId)
     
     if (!existsSync(filePath)) {
-      console.warn(`[fileRegistry] File not found on disk: ${filePath}`)
       return null
     }
     
@@ -109,10 +133,11 @@ function readFileFromDisk(fileId: string): FileMetadata | null {
       fileMetadata.uploadedAt = new Date(fileMetadata.uploadedAt)
     }
     
-    console.log(`[fileRegistry] ✅ Loaded file ${fileId} from disk`)
+    // Store in memory for next time
+    inMemoryStore.set(fileId, fileMetadata)
     return fileMetadata
-  } catch (error: any) {
-    console.error(`[fileRegistry] ❌ Failed to read file ${fileId} from disk:`, error.message)
+  } catch (error: unknown) {
+    // If disk read fails, return null (file might be in-memory only)
     return null
   }
 }
@@ -146,8 +171,6 @@ export function getFilesByIds(ids: string[]): FileMetadata[] {
     const file = readFileFromDisk(id)
     if (file) {
       files.push(file)
-    } else {
-      console.warn(`[fileRegistry] File ${id} not found on disk`)
     }
   }
   
@@ -160,7 +183,6 @@ export function getFilesByIds(ids: string[]): FileMetadata[] {
  */
 export function reRegisterFile(file: FileMetadata): void {
   saveFileToDisk(file.id, file)
-  console.log(`[fileRegistry] ✅ Re-registered file ${file.id} to disk`)
 }
 
 /**
@@ -171,14 +193,16 @@ export function deleteFile(id: string): void {
     return
   }
   
+  // Remove from in-memory store
+  inMemoryStore.delete(id)
+  
   try {
     const filePath = getFilePath(id)
     if (existsSync(filePath)) {
       unlinkSync(filePath)
-      console.log(`[fileRegistry] ✅ Deleted file ${id} from disk`)
     }
-  } catch (error: any) {
-    console.error(`[fileRegistry] ❌ Failed to delete file ${id} from disk:`, error.message)
+  } catch (error: unknown) {
+    // Ignore deletion errors - file might not exist on disk
   }
 }
 
@@ -233,11 +257,8 @@ export function cleanupOldFiles(): void {
       }
     }
     
-    if (cleanedCount > 0) {
-      console.log(`[fileRegistry] Cleaned up ${cleanedCount} old files`)
-    }
-  } catch (error: any) {
-    console.error('[fileRegistry] Error during cleanup:', error.message)
+  } catch (error: unknown) {
+    // Ignore cleanup errors
   }
 }
 

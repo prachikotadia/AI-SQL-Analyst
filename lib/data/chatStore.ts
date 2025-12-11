@@ -35,7 +35,7 @@ const chats = new Map<string, Chat>()
 export function createChat(chatId?: string): string {
   const finalChatId = chatId && !chats.has(chatId) 
     ? chatId 
-    : `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    : `chat_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
   
   const chat: Chat = {
     chatId: finalChatId,

@@ -27,12 +27,12 @@ export async function GET(request: NextRequest) {
         fileCount: chat.attachedFiles?.length || 0,
       })),
     })
-  } catch (error: any) {
-    console.error('[chats/route] Error fetching chats:', error)
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to fetch chats'
     // Return empty array instead of error to prevent 500 on page load
     return NextResponse.json({
       chats: [],
-      error: error.message || 'Failed to fetch chats',
+      error: errorMessage,
     }, { status: 200 })
   }
 }
@@ -44,9 +44,10 @@ export async function POST(request: NextRequest) {
   try {
     const chatId = createChat()
     return NextResponse.json({ chatId })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to create chat'
     return NextResponse.json(
-      { error: error.message || 'Failed to create chat' },
+      { error: errorMessage },
       { status: 500 }
     )
   }
@@ -151,9 +152,10 @@ export async function PUT(request: NextRequest) {
         })),
       },
     })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to update chat'
     return NextResponse.json(
-      { error: error.message || 'Failed to update chat' },
+      { error: errorMessage },
       { status: 500 }
     )
   }
@@ -176,9 +178,10 @@ export async function DELETE(request: NextRequest) {
 
     deleteChat(chatId)
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Failed to delete chat'
     return NextResponse.json(
-      { error: error.message || 'Failed to delete chat' },
+      { error: errorMessage },
       { status: 500 }
     )
   }
