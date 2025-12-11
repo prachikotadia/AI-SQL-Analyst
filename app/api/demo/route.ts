@@ -155,15 +155,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate chart specification
-    // Convert column names to ColumnMetadata format
-    const columns = queryResult.columns.map(name => {
-      // Try to find column type from file metadata
-      const col = firstFile.columns.find(c => c.name.toLowerCase() === name.toLowerCase())
-      return {
-        name,
-        type: col?.type || 'text',
-      }
-    })
+    // queryResult.columns is already ColumnMetadata[] from executeMultiFileQuery
+    const columns = queryResult.columns
     
     const chartResult = generateChartFromResult(
       queryResult.data,
