@@ -188,10 +188,17 @@ export function QueryInput({
         body: formData,
       })
 
-      const data = await response.json()
+      let data: any = {}
+      try {
+        data = await response.json()
+      } catch (jsonError) {
+        const text = await response.text()
+        throw new Error(`Upload failed: ${response.status} ${response.statusText}. ${text}`)
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Upload failed')
+        const errorMsg = data.error || data.message || `Upload failed: ${response.status} ${response.statusText}`
+        throw new Error(errorMsg)
       }
 
       const newFile: AttachedFile = {
@@ -366,16 +373,42 @@ export function QueryInput({
         throw new Error('Sample data file is empty')
       }
       
-      const file = new File([blob], 'sample-data.csv', { type: 'text/csv' })
+      const fileName = 'sample-data.csv'
+      const fileType = 'text/csv'
+      const file = new File([blob], fileName, { 
+        type: fileType,
+        lastModified: Date.now()
+      })
+      
+      if (!file || !file.name || !file.name.toLowerCase().endsWith('.csv')) {
+        throw new Error('Invalid file format: file name must end with .csv')
+      }
+      
+      if (!file.size || file.size === 0) {
+        throw new Error('File is empty')
+      }
+      
+      if (file.size > 10 * 1024 * 1024) {
+        throw new Error('File is too large')
+      }
       
       await handleFileSelect(file)
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load demo data'
-      toast({
-        title: 'Failed to load demo',
-        description: errorMessage,
-        variant: 'destructive',
-      })
+      
+      if (error instanceof Error && error.message.includes('400')) {
+        toast({
+          title: 'Upload failed',
+          description: 'The demo file could not be uploaded. Please try attaching it manually.',
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'Failed to load demo',
+          description: errorMessage,
+          variant: 'destructive',
+        })
+      }
     }
   }
 
