@@ -224,7 +224,6 @@ export function cleanupOldFiles(): void {
     const maxAge = 24 * 60 * 60 * 1000 // 24 hours
     
     const files = readdirSync(uploadsDir)
-    let cleanedCount = 0
     
     for (const file of files) {
       if (!file.endsWith('.json')) {
@@ -247,12 +246,10 @@ export function cleanupOldFiles(): void {
           const fileAge = now - uploadedAt
           if (fileAge > maxAge) {
             unlinkSync(filePath)
-            cleanedCount++
           }
         } catch (error) {
           // If we can't read the file, delete it anyway (corrupted)
           unlinkSync(filePath)
-          cleanedCount++
         }
       }
     }

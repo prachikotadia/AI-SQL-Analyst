@@ -109,8 +109,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // View file - redirect to viewer page (removed, now using /files/[tableName] page)
-    // This endpoint is kept for backward compatibility but redirects to the viewer page
     if (action === 'view' && tableName) {
       return NextResponse.redirect(new URL(`/files/${tableName}`, request.url))
     }
