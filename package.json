@@ -31,6 +31,7 @@
     "@radix-ui/react-toast": "^1.1.5",
     "@types/csv-parse": "^1.1.12",
     "@types/formidable": "^3.4.6",
+    "busboy": "^1.6.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "csv-parse": "^6.1.0",
@@ -51,6 +52,7 @@
   },
   "devDependencies": {
     "@netlify/plugin-nextjs": "^5.15.1",
+    "@types/busboy": "^1.5.4",
     "@types/node": "^20.10.5",
     "@types/pg": "^8.10.9",
     "@types/react": "^18.2.45",

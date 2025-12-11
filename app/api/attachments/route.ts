@@ -5,15 +5,8 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import * as XLSX from 'xlsx'
 import { parse } from 'csv-parse/sync'
-import { IncomingForm } from 'formidable'
-import type { File as FormidableFile } from 'formidable'
+import Busboy from 'busboy'
 import { registerFile } from '@/lib/data/fileRegistry'
-
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-}
 
 interface ParsedFile {
   data: any[]
@@ -83,42 +76,97 @@ async function parseFileBuffer(
   }
 }
 
-function convertToFormidableRequest(req: NextRequest): any {
-  const headers: Record<string, string> = {}
-  req.headers.forEach((value, key) => {
-    headers[key] = value
-  })
+function parseMultipartFormData(req: NextRequest): Promise<{ file: { name: string; buffer: Buffer }; chatId: string }> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const contentType = req.headers.get('content-type') || ''
+      const busboy = Busboy({ headers: { 'content-type': contentType } })
 
-  return {
-    headers,
-    method: req.method,
-    url: req.url,
-    readable: req.body || null,
-  }
+      let file: { name: string; buffer: Buffer } | null = null
+      let chatId: string | null = null
+      const chunks: Buffer[] = []
+
+      busboy.on('file', (name, fileStream, info) => {
+        if (name === 'file') {
+          const { filename } = info
+          fileStream.on('data', (chunk: Buffer) => {
+            chunks.push(chunk)
+          })
+          fileStream.on('end', () => {
+            if (filename) {
+              file = { name: filename, buffer: Buffer.concat(chunks) }
+            }
+          })
+        }
+      })
+
+      busboy.on('field', (name, value) => {
+        if (name === 'chatId') {
+          chatId = value
+        }
+      })
+
+      busboy.on('finish', () => {
+        if (!file) {
+          reject(new Error('No file provided'))
+          return
+        }
+        if (!chatId) {
+          reject(new Error('chatId is required'))
+          return
+        }
+        resolve({ file, chatId })
+      })
+
+      busboy.on('error', (err) => {
+        reject(err)
+      })
+
+      if (req.body) {
+        const reader = req.body.getReader()
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) {
+              busboy.end()
+              break
+            }
+            busboy.write(value)
+          }
+        } catch (err) {
+          reject(err)
+        }
+      } else {
+        reject(new Error('Request body is null'))
+      }
+    } catch (err) {
+      reject(err)
+    }
+  })
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const formData = await req.formData()
-    const file = formData.get('file') as File | null
-    const chatId = formData.get('chatId') as string | null
+    let file: { name: string; buffer: Buffer }
+    let chatId: string
 
-    if (!file) {
+    try {
+      const parsed = await parseMultipartFormData(req)
+      file = parsed.file
+      chatId = parsed.chatId
+    } catch (parseError: unknown) {
+      const errorMessage = parseError instanceof Error ? parseError.message : 'Failed to parse form data'
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[Attachments API] Parse error:', errorMessage)
+      }
       return NextResponse.json(
-        { error: 'No file provided' },
-        { status: 400 }
-      )
-    }
-
-    if (!chatId) {
-      return NextResponse.json(
-        { error: 'chatId is required. File must be attached to a chat.' },
+        { error: errorMessage },
         { status: 400 }
       )
     }
 
     if (process.env.NODE_ENV === 'development') {
-      console.log('[Attachments API] Received file:', file.name, 'Size:', file.size, 'Type:', file.type)
+      console.log('[Attachments API] Received file:', file.name, 'Size:', file.buffer.length)
     }
 
     const validExtensions = ['.csv', '.xlsx', '.xls']
@@ -131,22 +179,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       )
     }
 
-    if (file.size > 10 * 1024 * 1024) {
+    if (file.buffer.length > 10 * 1024 * 1024) {
       return NextResponse.json(
         { error: 'File too large. Maximum size is 10MB.' },
         { status: 400 }
       )
     }
 
-    const bytes = await file.arrayBuffer()
-    const buffer = Buffer.from(bytes)
-
     let data: any[] = []
     let headers: string[] = []
     let columns: Array<{ name: string; type: string }> = []
 
     try {
-      const parsed = await parseFileBuffer(buffer, file.name)
+      const parsed = await parseFileBuffer(file.buffer, file.name)
       data = parsed.data
       headers = parsed.headers
       columns = parsed.columns
