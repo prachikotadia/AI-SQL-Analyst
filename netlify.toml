@@ -9,16 +9,5 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-[functions]
-  included_files = ["public/**"]
-  node_bundler = "esbuild"
-  external_node_modules = ["formidable"]
-
-[functions."api_attachments"]
-  node_bundler = "esbuild"
-  included_files = ["public/**"]
-  memory = 2048
-  timeout = 30
-
 # Note: File storage in /uploads won't persist on Netlify (serverless)
 # Consider using external storage (S3, etc.) for production

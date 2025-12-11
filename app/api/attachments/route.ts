@@ -1,29 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { writeFile, unlink, readFile } from 'fs/promises'
-import { readFileSync } from 'fs'
+import { writeFile, unlink } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import * as XLSX from 'xlsx'
 import { parse } from 'csv-parse/sync'
-import Busboy from 'busboy'
+import { readFileSync } from 'fs'
 import { registerFile } from '@/lib/data/fileRegistry'
 
-interface ParsedFile {
-  data: any[]
-  headers: string[]
-  columns: Array<{ name: string; type: string }>
-}
-
-async function parseFileBuffer(
-  buffer: Buffer,
-  fileName: string
-): Promise<ParsedFile> {
-  const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+// Parse CSV/Excel file
+async function parseFile(file: File): Promise<{ data: any[]; headers: string[]; columns: Array<{ name: string; type: string }> }> {
+  const bytes = await file.arrayBuffer()
+  const buffer = Buffer.from(bytes)
+  
+  // Use /tmp directory (works in serverless environments)
+  // Sanitize filename to prevent path traversal
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
   const tempPath = join(tmpdir(), `attachment_${Date.now()}_${sanitizedFileName}`)
 
   try {
     await writeFile(tempPath, buffer)
-    const fileExtension = fileName.toLowerCase().split('.').pop()
+    const fileExtension = file.name.toLowerCase().split('.').pop()
 
     let rows: any[] = []
     let headers: string[] = []
@@ -48,6 +44,7 @@ async function parseFileBuffer(
       throw new Error('Unsupported file type')
     }
 
+    // Infer column types
     const columns = headers.map(header => {
       const values = rows.map(row => row[header]).filter(v => v != null && v !== '')
       let type = 'text'
@@ -70,108 +67,28 @@ async function parseFileBuffer(
   } finally {
     try {
       await unlink(tempPath)
-    } catch {
-      // Temp files auto-clean in serverless
+    } catch (error: unknown) {
+      // Failed to delete temp file, continue anyway
+      // In serverless, temp files are auto-cleaned
     }
   }
 }
 
-function parseMultipartFormData(req: NextRequest): Promise<{ file: { name: string; buffer: Buffer }; chatId: string }> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const contentType = req.headers.get('content-type') || ''
-      const busboy = Busboy({ headers: { 'content-type': contentType } })
-
-      let file: { name: string; buffer: Buffer } | null = null
-      let chatId: string | null = null
-      const chunks: Buffer[] = []
-
-      busboy.on('file', (name, fileStream, info) => {
-        if (name === 'file') {
-          const { filename } = info
-          fileStream.on('data', (chunk: Buffer) => {
-            chunks.push(chunk)
-          })
-          fileStream.on('end', () => {
-            if (filename) {
-              file = { name: filename, buffer: Buffer.concat(chunks) }
-            }
-          })
-        }
-      })
-
-      busboy.on('field', (name, value) => {
-        if (name === 'chatId') {
-          chatId = value
-        }
-      })
-
-      busboy.on('finish', () => {
-        if (!file) {
-          reject(new Error('No file provided'))
-          return
-        }
-        if (!chatId) {
-          reject(new Error('chatId is required'))
-          return
-        }
-        resolve({ file, chatId })
-      })
-
-      busboy.on('error', (err) => {
-        reject(err)
-      })
-
-      if (req.body) {
-        const reader = req.body.getReader()
-        try {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) {
-              busboy.end()
-              break
-            }
-            busboy.write(value)
-          }
-        } catch (err) {
-          reject(err)
-        }
-      } else {
-        reject(new Error('Request body is null'))
-      }
-    } catch (err) {
-      reject(err)
-    }
-  })
-}
-
-export async function POST(req: NextRequest): Promise<NextResponse> {
+export async function POST(request: NextRequest) {
   try {
-    let file: { name: string; buffer: Buffer }
-    let chatId: string
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
 
-    try {
-      const parsed = await parseMultipartFormData(req)
-      file = parsed.file
-      chatId = parsed.chatId
-    } catch (parseError: unknown) {
-      const errorMessage = parseError instanceof Error ? parseError.message : 'Failed to parse form data'
-      if (process.env.NODE_ENV === 'development') {
-        console.error('[Attachments API] Parse error:', errorMessage)
-      }
+    if (!file) {
       return NextResponse.json(
-        { error: errorMessage },
+        { error: 'No file provided' },
         { status: 400 }
       )
     }
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[Attachments API] Received file:', file.name, 'Size:', file.buffer.length)
-    }
-
+    // Validate file type
     const validExtensions = ['.csv', '.xlsx', '.xls']
     const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
-    
     if (!validExtensions.some(ext => file.name.toLowerCase().endsWith(ext))) {
       return NextResponse.json(
         { error: 'Invalid file type. Please upload CSV or Excel files.' },
@@ -179,32 +96,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       )
     }
 
-    if (file.buffer.length > 10 * 1024 * 1024) {
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
       return NextResponse.json(
         { error: 'File too large. Maximum size is 10MB.' },
         { status: 400 }
       )
     }
 
-    let data: any[] = []
-    let headers: string[] = []
-    let columns: Array<{ name: string; type: string }> = []
-
-    try {
-      const parsed = await parseFileBuffer(file.buffer, file.name)
-      data = parsed.data
-      headers = parsed.headers
-      columns = parsed.columns
-    } catch (parseError: unknown) {
-      const parseErrorMessage = parseError instanceof Error ? parseError.message : 'Failed to parse file'
-      if (process.env.NODE_ENV === 'development') {
-        console.error('[Attachments API] Parse error:', parseErrorMessage)
-      }
-      return NextResponse.json(
-        { error: `Failed to parse file: ${parseErrorMessage}` },
-        { status: 400 }
-      )
-    }
+    const { data, headers, columns } = await parseFile(file)
 
     if (data.length === 0) {
       return NextResponse.json({
@@ -212,8 +112,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }, { status: 400 })
     }
 
+    // Generate table name from filename
     const tableName = file.name.replace(/\.(csv|xlsx|xls)$/i, '').replace(/[^a-z0-9_]/gi, '_').toLowerCase()
 
+    // Register file and get ID
     const fileMetadata = {
       fileName: file.name,
       tableName,
@@ -222,105 +124,83 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       uploadedAt: new Date(),
     }
     const fileId = registerFile(fileMetadata)
-
+    
+    // CRITICAL: chatId is REQUIRED - file MUST be attached to a chat
+    // This ensures files persist and are available for all queries in that chat
+    const chatId = formData.get('chatId') as string | null
+    
+    if (!chatId) {
+      return NextResponse.json(
+        { error: 'chatId is required. File must be attached to a chat.' },
+        { status: 400 }
+      )
+    }
+    
+    // ALWAYS add file to chatStore IMMEDIATELY in the same request
+    // This ensures files persist even if serverless resets between upload and addFile calls
+    // Use dynamic import to avoid circular dependency issues
     let actualChatId = chatId
     try {
       const { getChat, createChat, addFileToChat, getChatFiles } = await import('@/lib/data/chatStore')
-
+      
       let chat = getChat(chatId)
-
+      
       if (!chat) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[Attachments API] Chat not found, creating new chat with ID:', chatId)
-        }
+        // Create chat if it doesn't exist
         actualChatId = createChat(chatId.startsWith('chat_') ? chatId : undefined)
         chat = getChat(actualChatId)
-
+        
+        // If still null, try one more time with generated ID
         if (!chat) {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[Attachments API] First create failed, trying again with generated ID')
-          }
           actualChatId = createChat()
           chat = getChat(actualChatId)
         }
       }
-
+      
       if (!chat) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('[Attachments API] Failed to create chat after multiple attempts')
-        }
         return NextResponse.json(
           { error: 'Failed to create or retrieve chat. Please try again.' },
           { status: 500 }
         )
       }
-
+      
       const fullFileMetadata = { ...fileMetadata, id: fileId }
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Attachments API] Adding file to chat:', chat.chatId, 'File ID:', fileId)
-      }
-
       addFileToChat(chat.chatId, fullFileMetadata)
-
+      
+      // Verify it was added
       const verifyFiles = getChatFiles(chat.chatId)
       const fileExists = verifyFiles.some(f => f.id === fileId)
-
       if (!fileExists) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('[Attachments API] File verification failed. Files in chat:', verifyFiles.map(f => f.id))
-        }
         return NextResponse.json(
           { error: 'File was registered but failed to attach to chat. Please try again.' },
           { status: 500 }
         )
       }
-
+      
       actualChatId = chat.chatId
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Attachments API] File successfully attached to chat:', actualChatId)
-      }
-
-      return NextResponse.json({
-        success: true,
-        fileId,
-        fileName: file.name,
-        tableName,
-        rowCount: data.length,
-        columns: columns.map(c => ({ name: c.name, type: c.type })),
-        chatId: actualChatId || chatId,
-      })
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-      const errorStack = error instanceof Error ? error.stack : undefined
-
-      if (process.env.NODE_ENV === 'development') {
-        console.error('[Attachments API] Chat store error:', errorMessage, errorStack)
-      }
-
       return NextResponse.json(
-        {
-          error: `Failed to attach file to chat: ${errorMessage}`,
-          details: process.env.NODE_ENV === 'development' ? errorStack : undefined
-        },
+        { error: `Failed to attach file to chat: ${errorMessage}` },
         { status: 500 }
       )
     }
+    
+    return NextResponse.json({
+      success: true,
+      fileId,
+      fileName: file.name,
+      tableName,
+      rowCount: data.length,
+      columns: columns.map(c => ({ name: c.name, type: c.type })),
+      chatId: actualChatId || chatId, // Return chatId so frontend knows which chat has the file
+    })
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to process file'
-    const errorStack = error instanceof Error ? error.stack : undefined
-
-    if (process.env.NODE_ENV === 'development') {
-      console.error('[Attachments API] Error:', errorMessage, errorStack)
-    }
-
     return NextResponse.json(
-      {
-        error: errorMessage,
-        details: process.env.NODE_ENV === 'development' ? errorStack : undefined
-      },
+      { error: errorMessage },
       { status: 500 }
     )
   }
 }
+

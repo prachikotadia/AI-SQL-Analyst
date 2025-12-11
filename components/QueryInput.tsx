@@ -4,7 +4,7 @@ import { useState, KeyboardEvent, useRef, useEffect } from 'react'
 import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { RunButton } from './RunButton'
-import { Paperclip, X, FileText, Loader2, Eye, Plus, Sparkles } from 'lucide-react'
+import { Paperclip, X, FileText, Loader2, Eye, Plus } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
 import { FileViewerModal } from './FileViewerModal'
 import { QuerySuggestions } from './QuerySuggestions'
@@ -188,17 +188,10 @@ export function QueryInput({
         body: formData,
       })
 
-      let data: any = {}
-      try {
-        data = await response.json()
-      } catch (jsonError) {
-        const text = await response.text()
-        throw new Error(`Upload failed: ${response.status} ${response.statusText}. ${text}`)
-      }
+      const data = await response.json()
 
       if (!response.ok) {
-        const errorMsg = data.error || data.message || `Upload failed: ${response.status} ${response.statusText}`
-        throw new Error(errorMsg)
+        throw new Error(data.error || 'Upload failed')
       }
 
       const newFile: AttachedFile = {
@@ -350,65 +343,9 @@ export function QueryInput({
   const handlePreviewCancel = () => {
     setShowPreview(false)
     setPreviewFile(null)
+    // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
-    }
-  }
-
-  const handleDemoCSV = async () => {
-    if (isUploading || isLoading) return
-    
-    try {
-      const response = await fetch('/sample-data.csv', {
-        cache: 'no-cache',
-      })
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch sample data: ${response.status} ${response.statusText}`)
-      }
-      
-      const blob = await response.blob()
-      
-      if (blob.size === 0) {
-        throw new Error('Sample data file is empty')
-      }
-      
-      const fileName = 'sample-data.csv'
-      const fileType = 'text/csv'
-      const file = new File([blob], fileName, { 
-        type: fileType,
-        lastModified: Date.now()
-      })
-      
-      if (!file || !file.name || !file.name.toLowerCase().endsWith('.csv')) {
-        throw new Error('Invalid file format: file name must end with .csv')
-      }
-      
-      if (!file.size || file.size === 0) {
-        throw new Error('File is empty')
-      }
-      
-      if (file.size > 10 * 1024 * 1024) {
-        throw new Error('File is too large')
-      }
-      
-      await handleFileSelect(file)
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load demo data'
-      
-      if (error instanceof Error && error.message.includes('400')) {
-        toast({
-          title: 'Upload failed',
-          description: 'The demo file could not be uploaded. Please try attaching it manually.',
-          variant: 'destructive',
-        })
-      } else {
-        toast({
-          title: 'Failed to load demo',
-          description: errorMessage,
-          variant: 'destructive',
-        })
-      }
     }
   }
 
@@ -637,14 +574,14 @@ export function QueryInput({
             className="hidden"
             disabled={isLoading || isUploading}
           />
-          <div className="relative file-history-container flex gap-2">
+          <div className="relative file-history-container">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={isLoading || isUploading}
-              className="neumorphic-button gap-2 relative min-h-[44px] text-xs sm:text-sm hover:scale-105 transition-transform duration-200"
+              className="neumorphic-button gap-2 relative min-h-[44px] text-xs sm:text-sm"
             >
               {isUploading ? (
                 <>
@@ -659,18 +596,6 @@ export function QueryInput({
                   <span className="sm:hidden">Attach</span>
                 </>
               )}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleDemoCSV}
-              disabled={isLoading || isUploading}
-              className="neumorphic-button-demo gap-2 relative min-h-[44px] text-xs sm:text-sm hover:scale-105 transition-all duration-200 bg-gradient-to-r from-primary/10 to-primary/5 hover:from-primary/20 hover:to-primary/10"
-            >
-              <Sparkles className="h-4 w-4 text-primary" />
-              <span className="hidden sm:inline">Demo CSV</span>
-              <span className="sm:hidden">Demo</span>
             </Button>
           </div>
           
