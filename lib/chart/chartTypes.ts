@@ -7,6 +7,8 @@ export const CHART_TYPES = {
   LINE: 'line' as const,
   AREA: 'area' as const,
   PIE: 'pie' as const,
+  SCATTER: 'scatter' as const,
+  HEATMAP: 'heatmap' as const,
   TABLE: 'table' as const,
   KPI: 'kpi' as const,
   SINGLE_VALUE: 'single_value' as const,
@@ -101,6 +103,26 @@ export const CHART_TYPE_CONFIGS: Record<NonNullable<ChartType>, ChartTypeConfig>
     defaultFields: {
       xField: 'label',
       yField: 'value',
+    },
+  },
+  scatter: {
+    type: 'scatter',
+    label: 'Scatter Plot',
+    description: 'Best for correlations and relationships',
+    suitableFor: ['correlation', 'comparison'],
+    defaultFields: {
+      xField: 'x',
+      yField: 'y',
+    },
+  },
+  heatmap: {
+    type: 'heatmap',
+    label: 'Heatmap',
+    description: 'Best for patterns and density',
+    suitableFor: ['pattern', 'density'],
+    defaultFields: {
+      xField: 'x',
+      yField: 'y',
     },
   },
 }

@@ -233,11 +233,10 @@ export async function POST(request: NextRequest) {
       try {
         await unlink(tempPath)
       } catch (error) {
-        console.error('Failed to delete temp file:', error)
+        // Failed to delete temp file, continue anyway
       }
     }
   } catch (error: any) {
-    console.error('Upload error:', error)
     return NextResponse.json(
       { error: error.message || 'Failed to process file' },
       { status: 500 }

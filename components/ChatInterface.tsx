@@ -37,7 +37,7 @@ export function ChatInterface({ className }: ChatInterfaceProps) {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('chat-session-id')
       if (stored) return stored
-      const newId = `chat-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+      const newId = `chat-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
       localStorage.setItem('chat-session-id', newId)
       return newId
     }

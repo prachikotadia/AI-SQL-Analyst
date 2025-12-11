@@ -5,7 +5,11 @@
   ],
   "plugins": [],
   "rules": {
-    "prettier/prettier": "off"
+    "prettier/prettier": "off",
+    "jsx-a11y/alt-text": ["warn", {
+      "elements": ["img"],
+      "img": ["Image"]
+    }]
   }
 }
 

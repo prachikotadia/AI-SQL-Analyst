@@ -3,9 +3,7 @@ import { buildPrompt, buildChatPrompt } from './prompt'
 import { repairJson } from './jsonRepair'
 import type { LLMResponse } from '@/types'
 
-/**
- * Chat-specific response format
- */
+// Response format for chat sessions with uploaded files
 export interface ChatLLMResponse {
   reasoning: string
   sql: string
@@ -14,7 +12,7 @@ export interface ChatLLMResponse {
     xField: string
     yField: string
     seriesField: string
-    data?: any
+    data?: unknown
   }
 }
 
@@ -35,9 +33,8 @@ export interface NLToSqlResult {
   error?: string
 }
 
-/**
- * Convert natural language to SQL using OpenAI
- */
+// Convert natural language queries to SQL using the language model
+// Handles JSON parsing, retries on errors, and works with both OpenAI and LM Studio
 export async function nlToSql(options: NLToSqlOptions): Promise<NLToSqlResult> {
   const { query, timeRange, retryOnError = true } = options
 
@@ -49,7 +46,15 @@ export async function nlToSql(options: NLToSqlOptions): Promise<NLToSqlResult> {
     const baseURL = process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
     const isLMStudio = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
     
-    const requestOptions: any = {
+    interface ChatCompletionRequest {
+      model: string
+      messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+      temperature: number
+      max_tokens: number
+      response_format?: { type: 'json_object' }
+    }
+    
+    const requestOptions: ChatCompletionRequest = {
       model: process.env.OPENAI_MODEL || 'llama-3.2-1b-instruct', // LM Studio model name
       messages: [
         {
@@ -86,7 +91,8 @@ export async function nlToSql(options: NLToSqlOptions): Promise<NLToSqlResult> {
     let parsed: LLMResponse
     try {
       parsed = JSON.parse(content)
-    } catch (parseError: any) {
+    } catch (parseError: unknown) {
+      const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parse error'
       
       // Try to extract JSON from markdown code blocks
       const jsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/)
@@ -141,12 +147,13 @@ export async function nlToSql(options: NLToSqlOptions): Promise<NLToSqlResult> {
       response: parsed,
       tokensUsed,
     }
-  } catch (error: any) {
-    if (retryOnError && (error.message.includes('JSON') || error.message.includes('parse'))) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    if (retryOnError && (errorMessage.includes('JSON') || errorMessage.includes('parse'))) {
       // Retry once with a repair prompt
       const repairPrompt = `Your previous response was invalid JSON. Please fix it and return ONLY valid JSON.
 
-Previous error: ${error.message}
+Previous error: ${errorMessage}
 
 Original prompt: ${await buildPrompt(query, timeRange)}
 
@@ -157,7 +164,15 @@ Return valid JSON with fields: preview_sql, action_sql, reasoning, chart (with t
       const isLMStudioRetry = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
       
       try {
-        const retryRequestOptions: any = {
+        interface ChatCompletionRequest {
+          model: string
+          messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+          temperature: number
+          max_tokens: number
+          response_format?: { type: 'json_object' }
+        }
+        
+        const retryRequestOptions: ChatCompletionRequest = {
           model: process.env.OPENAI_MODEL || 'llama-3.2-1b-instruct', // LM Studio model name
           messages: [
             {
@@ -209,20 +224,18 @@ Return valid JSON with fields: preview_sql, action_sql, reasoning, chart (with t
         reasoning: 'Failed to generate SQL query.',
         chart: { type: 'table', xField: null, yField: null },
       },
-      error: error.message || 'Failed to convert natural language to SQL',
+      error: errorMessage || 'Failed to convert natural language to SQL',
     }
   }
 }
 
-/**
- * Convert natural language to SQL for chat sessions with uploaded files
- * Uses buildChatPrompt with strict rules for per-session file handling
- */
+// Convert natural language to SQL for chat sessions with uploaded files
+// Uses file-specific prompts that include schema and sample data
 export async function nlToSqlForChat(
   userQuery: string,
   tableName: string,
   columns: Array<{ name: string; type: string }>,
-  data: any[],
+  data: Record<string, unknown>[],
   retryOnError: boolean = true
 ): Promise<{ response: ChatLLMResponse; error?: string }> {
   try {
@@ -232,7 +245,15 @@ export async function nlToSqlForChat(
     const baseURL = process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
     const isLMStudio = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
     
-    const requestOptions: any = {
+    interface ChatCompletionRequest {
+      model: string
+      messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+      temperature: number
+      max_tokens: number
+      response_format?: { type: 'json_object' }
+    }
+    
+    const requestOptions: ChatCompletionRequest = {
       model: process.env.OPENAI_MODEL || 'llama-3.2-1b-instruct',
       messages: [
         {
@@ -268,7 +289,7 @@ export async function nlToSqlForChat(
     let parsed: ChatLLMResponse
     try {
       parsed = JSON.parse(content)
-    } catch (parseError: any) {
+    } catch (parseError: unknown) {
       // Try to extract JSON from markdown code blocks
       const jsonMatch = content.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/)
       if (jsonMatch) {
@@ -318,12 +339,13 @@ export async function nlToSqlForChat(
     }
 
     return { response: parsed }
-  } catch (error: any) {
-    if (retryOnError && (error.message.includes('JSON') || error.message.includes('parse'))) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    if (retryOnError && (errorMessage.includes('JSON') || errorMessage.includes('parse'))) {
       // Retry once with a repair prompt
       const repairPrompt = `Your previous response was invalid JSON. Please fix it and return ONLY valid JSON.
 
-Previous error: ${error.message}
+Previous error: ${errorMessage}
 
 Original prompt: ${buildChatPrompt(userQuery, tableName, columns, data)}
 
@@ -333,7 +355,15 @@ Return valid JSON with fields: reasoning, sql, chart (with type, xField, yField,
       const isLMStudioRetry = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
       
       try {
-        const retryRequestOptions: any = {
+        interface ChatCompletionRequest {
+          model: string
+          messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+          temperature: number
+          max_tokens: number
+          response_format?: { type: 'json_object' }
+        }
+        
+        const retryRequestOptions: ChatCompletionRequest = {
           model: process.env.OPENAI_MODEL || 'llama-3.2-1b-instruct',
           messages: [
             {

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3002",
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
@@ -15,7 +15,8 @@
     "prisma:seed-cities": "tsx prisma/seed-cities.ts",
     "prisma:studio": "prisma studio",
     "test": "tsx scripts/test-all.ts",
-    "test:all": "tsx scripts/test-all.ts"
+    "test:all": "tsx scripts/test-all.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@faker-js/faker": "^8.3.1",
@@ -32,6 +33,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "csv-parse": "^6.1.0",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^0.303.0",
     "next": "^15.0.0",
     "openai": "^4.20.1",

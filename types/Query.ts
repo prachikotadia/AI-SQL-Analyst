@@ -20,7 +20,7 @@ export const QueryResponseSchema = z.object({
   action_sql: z.string().nullable(),
   sql: z.string().optional(), // Legacy field
   chartSpec: z.object({
-    type: z.enum(['bar', 'line', 'area', 'pie', 'table', 'kpi', 'single_value']).nullable(),
+    type: z.enum(['bar', 'line', 'area', 'pie', 'scatter', 'heatmap', 'table', 'kpi', 'single_value']).nullable(),
     xField: z.string().nullable(),
     yField: z.string().nullable(),
     seriesField: z.string().nullable().optional(),
@@ -32,9 +32,15 @@ export const QueryResponseSchema = z.object({
     description: z.string(),
   }).optional(),
   queryCategory: z.string().optional(),
+  performanceMetrics: z.object({
+    executionTimeMs: z.number(),
+    tokenUsage: z.number().optional(),
+    queryComplexity: z.number().optional(),
+    sqlLength: z.number().optional(),
+  }).optional(),
   error: z.object({
     message: z.string(),
-    type: z.enum(['validation', 'execution', 'llm', 'unknown', 'no_files']),
+    type: z.enum(['validation', 'execution', 'llm', 'unknown', 'no_files', 'out_of_scope']),
   }).nullable(),
 })
 

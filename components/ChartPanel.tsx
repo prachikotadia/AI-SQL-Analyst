@@ -1,17 +1,74 @@
 'use client'
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Button } from '@/components/ui/button'
+import { Maximize2 } from 'lucide-react'
 import { renderChart } from '@/lib/chart/renderChart'
+import { ChartFullscreenModal } from './ChartFullscreenModal'
 import type { ChartSpec, ColumnMetadata } from '@/types'
 
 interface ChartPanelProps {
   data: Record<string, any>[]
   chartSpec: ChartSpec
   columns: ColumnMetadata[]
+  query?: string // Optional query text for generating meaningful titles
 }
 
-export function ChartPanel({ data, chartSpec, columns }: ChartPanelProps) {
+export function ChartPanel({ data, chartSpec, columns, query }: ChartPanelProps) {
+  const [fullscreenChart, setFullscreenChart] = useState<{
+    type: 'bar' | 'pie' | 'line'
+  } | null>(null)
+  
+  // Generate meaningful chart title from fields and query
+  const generateChartTitle = (type: string, xField: string | null, yField: string | null): string => {
+    if (!xField || !yField) {
+      return `${type.charAt(0).toUpperCase() + type.slice(1)} Chart`
+    }
+    
+    // Format field names for display
+    const formatFieldName = (field: string): string => {
+      return field
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, l => l.toUpperCase())
+        .trim()
+    }
+    
+    const xLabel = formatFieldName(xField)
+    const yLabel = formatFieldName(yField)
+    
+    // Generate descriptive title based on chart type
+    switch (type) {
+      case 'bar':
+        return `${yLabel} by ${xLabel}`
+      case 'line':
+        return `${yLabel} Over Time`
+      case 'pie':
+        return `Distribution of ${xLabel}`
+      default:
+        return `${yLabel} vs ${xLabel}`
+    }
+  }
+  
+  // Generate chart description/subtitle
+  const generateChartDescription = (xField: string | null, yField: string | null, dataLength: number): string => {
+    if (!xField || !yField) {
+      return `Showing ${dataLength} ${dataLength === 1 ? 'result' : 'results'}`
+    }
+    
+    const formatFieldName = (field: string): string => {
+      return field
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, l => l.toUpperCase())
+        .trim()
+    }
+    
+    const xLabel = formatFieldName(xField)
+    const yLabel = formatFieldName(yField)
+    
+    return `Showing ${yLabel} for each ${xLabel} (${dataLength} ${dataLength === 1 ? 'item' : 'items'})`
+  }
   if (data.length === 0) {
     return (
       <Card className="neumorphic-card">
@@ -205,9 +262,32 @@ export function ChartPanel({ data, chartSpec, columns }: ChartPanelProps) {
         <TabsContent value="bar" className="mt-4 animate-in fade-in-50 duration-300">
           <Card>
             <CardHeader>
-              <CardTitle>Bar Chart</CardTitle>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>
+                    {generateChartTitle('bar', xField, yField)}
+                  </CardTitle>
+                  {xField && yField && (
+                    <CardDescription>
+                      {generateChartDescription(xField, yField, data.length)}
+                    </CardDescription>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFullscreenChart({ type: 'bar' })}
+                  className="gap-2"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                  Fullscreen
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent className="transition-opacity duration-300">
+            <CardContent 
+              className="transition-opacity duration-300 cursor-pointer hover:opacity-90"
+              onClick={() => setFullscreenChart({ type: 'bar' })}
+            >
               {barResult.error ? (
                 <div className="flex items-center justify-center py-12">
                   <p className="text-muted-foreground">{barResult.error}</p>
@@ -222,9 +302,32 @@ export function ChartPanel({ data, chartSpec, columns }: ChartPanelProps) {
         <TabsContent value="pie" className="mt-4 animate-in fade-in-50 duration-300">
           <Card>
             <CardHeader>
-              <CardTitle>Pie Chart</CardTitle>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>
+                    {generateChartTitle('pie', xField, yField)}
+                  </CardTitle>
+                  {xField && yField && (
+                    <CardDescription>
+                      {generateChartDescription(xField, yField, data.length)}
+                    </CardDescription>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFullscreenChart({ type: 'pie' })}
+                  className="gap-2"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                  Fullscreen
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent className="transition-opacity duration-300">
+            <CardContent 
+              className="transition-opacity duration-300 cursor-pointer hover:opacity-90"
+              onClick={() => setFullscreenChart({ type: 'pie' })}
+            >
               {pieResult.error ? (
                 <div className="flex items-center justify-center py-12">
                   <p className="text-muted-foreground">{pieResult.error}</p>
@@ -239,9 +342,32 @@ export function ChartPanel({ data, chartSpec, columns }: ChartPanelProps) {
         <TabsContent value="line" className="mt-4 animate-in fade-in-50 duration-300">
           <Card>
             <CardHeader>
-              <CardTitle>Line Chart</CardTitle>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>
+                    {generateChartTitle('line', xField, yField)}
+                  </CardTitle>
+                  {xField && yField && (
+                    <CardDescription>
+                      {generateChartDescription(xField, yField, data.length)}
+                    </CardDescription>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setFullscreenChart({ type: 'line' })}
+                  className="gap-2"
+                >
+                  <Maximize2 className="h-4 w-4" />
+                  Fullscreen
+                </Button>
+              </div>
             </CardHeader>
-            <CardContent className="transition-opacity duration-300">
+            <CardContent 
+              className="transition-opacity duration-300 cursor-pointer hover:opacity-90"
+              onClick={() => setFullscreenChart({ type: 'line' })}
+            >
               {lineResult.error ? (
                 <div className="flex items-center justify-center py-12">
                   <p className="text-muted-foreground">{lineResult.error}</p>
@@ -253,6 +379,24 @@ export function ChartPanel({ data, chartSpec, columns }: ChartPanelProps) {
           </Card>
         </TabsContent>
       </Tabs>
+      
+      {/* Fullscreen Modal */}
+      {fullscreenChart && (
+        <ChartFullscreenModal
+          open={true}
+          onOpenChange={(open) => {
+            if (!open) {
+              setFullscreenChart(null)
+            }
+          }}
+          data={data}
+          chartSpec={chartSpec}
+          columns={columns}
+          chartType={fullscreenChart.type}
+          title={generateChartTitle(fullscreenChart.type, xField, yField)}
+          description={xField && yField ? generateChartDescription(xField, yField, data.length) : undefined}
+        />
+      )}
     </div>
   )
 }

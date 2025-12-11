@@ -57,8 +57,6 @@ export async function getDatabaseSchema(): Promise<TableSchema[]> {
 
     return Array.from(tableMap.values())
   } catch (error) {
-    console.error('Error fetching database schema dynamically, falling back to static schema:', error)
-    
     // Fallback to static schema if dynamic query fails
     const tables: TableSchema[] = [
       {

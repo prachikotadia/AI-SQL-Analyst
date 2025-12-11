@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react'
-import { BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter, ZAxis } from 'recharts'
 import type { ChartSpec, ColumnMetadata } from '@/types'
 import { CHART_TYPES } from './chartTypes'
 
@@ -316,7 +316,7 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
   }
 
   // Format tooltip values
-  const formatTooltipValue = (value: any, name: string) => {
+  const formatTooltipValue = (value: unknown, name: string) => {
     if (typeof value === 'number') {
       if (name.toLowerCase().includes('amount') || name.toLowerCase().includes('revenue') || name.toLowerCase().includes('price') || name.toLowerCase().includes('cost')) {
         return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
@@ -329,12 +329,18 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
   }
 
   // Custom tooltip component
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  interface TooltipProps {
+    active?: boolean
+    payload?: Array<{ name?: string; value?: unknown; color?: string }>
+    label?: string
+  }
+  
+  const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-popover border border-border rounded-lg shadow-lg p-3">
           <p className="font-semibold mb-2">{label}</p>
-          {payload.map((entry: any, index: number) => (
+          {payload.map((entry, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
               {entry.name}: {formatTooltipValue(entry.value, entry.name)}
             </p>
@@ -719,10 +725,39 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
       }
 
     case CHART_TYPES.PIE:
-      // Limit pie chart to top 10 items for readability
-      const pieData = data.length > 10 
-        ? [...data].sort((a, b) => (b[yField] || 0) - (a[yField] || 0)).slice(0, 10)
-        : data
+      // For pie charts with many items, group small slices into "Others"
+      // This prevents label overlapping and makes the chart readable
+      const MAX_PIE_ITEMS = 12 // Show top 12 items, group rest as "Others"
+      
+      let pieData = [...data]
+      let othersData: { name: string; value: number } | null = null
+      
+      // Sort by yField value (descending) to get top items
+      if (yField && typeof data[0]?.[yField] === 'number') {
+        pieData = [...data].sort((a, b) => (Number(b[yField]) || 0) - (Number(a[yField]) || 0))
+      }
+      
+      // If too many items, group the rest
+      if (pieData.length > MAX_PIE_ITEMS) {
+        const topItems = pieData.slice(0, MAX_PIE_ITEMS)
+        const restItems = pieData.slice(MAX_PIE_ITEMS)
+        
+        // Calculate sum of "Others"
+        const othersSum = restItems.reduce((sum, item) => {
+          const val = Number(item[yField]) || 0
+          return sum + val
+        }, 0)
+        
+        if (othersSum > 0) {
+          othersData = {
+            [xField]: `Others (${restItems.length} items)`,
+            [yField]: othersSum,
+          }
+          pieData = [...topItems, othersData]
+        } else {
+          pieData = topItems
+        }
+      }
       
       const total = pieData.reduce((sum, item) => sum + (Number(item[yField]) || 0), 0)
       
@@ -752,15 +787,19 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
                 cx="50%"
                 cy="50%"
                 outerRadius={Math.min(140, height / 3)}
-                innerRadius={Math.min(60, height / 6)}
+                innerRadius={pieData.length > 8 ? Math.min(60, height / 6) : 0} // Donut for many items
                 paddingAngle={2}
-                label={({ name, percent, value }) => {
-                  const displayName = String(name).length > 15 
-                    ? String(name).substring(0, 15) + '...' 
-                    : String(name)
-                  return `${displayName}: ${(percent * 100).toFixed(1)}%`
-                }}
-                labelLine={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1 }}
+                labelLine={pieData.length <= 8} // Only show label lines for 8 or fewer items
+                label={pieData.length <= 8 ? ({ name, percent, value }) => {
+                  // Only show labels for significant slices (>2%) or top items
+                  if (percent > 0.02 || pieData.length <= 5) {
+                    const displayName = String(name).length > 15 
+                      ? String(name).substring(0, 15) + '...' 
+                      : String(name)
+                    return `${displayName}: ${(percent * 100).toFixed(1)}%`
+                  }
+                  return ''
+                } : false} // No labels if too many items - use legend instead
               >
                 {pieData.map((entry, index) => (
                   <Cell 
@@ -794,11 +833,15 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
               />
               <Legend 
                 verticalAlign="bottom"
-                height={36}
+                height={Math.min(200, pieData.length * 20 + 40)}
                 iconType="circle"
                 wrapperStyle={{ paddingTop: '20px' }}
+                formatter={(value: string) => {
+                  // Truncate long names in legend
+                  return value.length > 30 ? value.substring(0, 30) + '...' : value
+                }}
               />
-              {data.length > 10 && (
+              {data.length > MAX_PIE_ITEMS && (
                 <g>
                   <text 
                     x="50%" 
@@ -807,12 +850,104 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
                     fill="hsl(var(--muted-foreground))"
                     fontSize="12"
                   >
-                    Showing top 10 of {data.length} items
+                    Showing top {MAX_PIE_ITEMS} of {data.length} items. Others grouped.
                   </text>
                 </g>
               )}
             </PieChart>
           </ResponsiveContainer>
+          </div>
+        ),
+      }
+
+    case CHART_TYPES.SCATTER:
+      return {
+        component: (
+          <div className="space-y-4">
+            <div className="bg-muted/50 rounded-lg p-3 border border-border">
+              <div className="flex gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-muted-foreground">X-Axis:</span>
+                  <span className="font-medium">{formatFieldName(xField)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-muted-foreground">Y-Axis:</span>
+                  <span className="font-medium">{formatFieldName(yField)}</span>
+                </div>
+              </div>
+            </div>
+            <ResponsiveContainer width="100%" height={height}>
+              <ScatterChart {...commonProps}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.15} />
+                <XAxis 
+                  type="number"
+                  dataKey={xField}
+                  name={formatFieldName(xField)}
+                  tickFormatter={formatYAxis}
+                />
+                <YAxis 
+                  type="number"
+                  dataKey={yField}
+                  name={formatFieldName(yField)}
+                  tickFormatter={formatYAxis}
+                />
+                <Tooltip content={CustomTooltip} cursor={{ strokeDasharray: '3 3' }} />
+                <Scatter 
+                  name="Data Points" 
+                  data={data} 
+                  fill={COLORS[0]}
+                />
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+        ),
+      }
+
+    case CHART_TYPES.HEATMAP:
+      // For heatmap, we need to create a grid of values
+      // This is a simplified version - in production you'd want more sophisticated binning
+      const heatmapData = data.map((row, index) => ({
+        x: index,
+        y: typeof row[yField] === 'number' ? row[yField] : 0,
+        value: typeof row[yField] === 'number' ? row[yField] : 0,
+      }))
+
+      return {
+        component: (
+          <div className="space-y-4">
+            <div className="bg-muted/50 rounded-lg p-3 border border-border">
+              <div className="flex gap-6 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-muted-foreground">X-Axis:</span>
+                  <span className="font-medium">{formatFieldName(xField)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold text-muted-foreground">Y-Axis:</span>
+                  <span className="font-medium">{formatFieldName(yField)}</span>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 border border-border rounded-lg bg-muted/20">
+              <div className="grid grid-cols-10 gap-1">
+                {heatmapData.slice(0, 100).map((item, idx) => {
+                  const intensity = Math.min(1, item.value / (Math.max(...heatmapData.map(d => d.value)) || 1))
+                  const colorIntensity = Math.floor(intensity * 255)
+                  return (
+                    <div
+                      key={idx}
+                      className="aspect-square rounded-sm border border-border/50"
+                      style={{
+                        backgroundColor: `rgba(59, 130, 246, ${intensity})`,
+                      }}
+                      title={`Value: ${item.value}`}
+                    />
+                  )
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2 text-center">
+                Heatmap visualization (showing first 100 data points)
+              </p>
+            </div>
           </div>
         ),
       }

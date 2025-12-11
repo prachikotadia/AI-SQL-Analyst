@@ -42,3 +42,6 @@ logs/
 data/
 upload-history.json
 
+# uploaded files (persistent disk storage)
+/uploads
+

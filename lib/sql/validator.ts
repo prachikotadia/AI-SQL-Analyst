@@ -6,13 +6,13 @@ function normalizeColumnName(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
-// Tier 1: Denylist keywords (security commands only - allow DML/DDL in sandbox)
+// Block security-sensitive commands while allowing DML/DDL in sandbox
 const DANGEROUS_KEYWORDS = [
   'COMMENT', 'EXEC', 'EXECUTE', 'CALL', 'GRANT', 'REVOKE', 'MERGE',
   'COPY', 'IMPORT', 'EXPORT', 'BACKUP', 'RESTORE'
 ]
 
-// Tier 1: Suspicious patterns (allow DML/DDL but block security/system commands)
+// Block suspicious patterns that could access system tables or execute commands
 const SUSPICIOUS_PATTERNS = [
   /;\s*(EXEC|GRANT|REVOKE|COMMENT)/i,
   /--/,
@@ -30,9 +30,8 @@ const SUSPICIOUS_PATTERNS = [
 const MAX_ROWS = 5000
 const MAX_EXECUTION_TIME_MS = 5000
 
-/**
- * Tier 1: Denylist validation - Check for dangerous keywords and patterns
- */
+// First validation pass: block dangerous keywords and suspicious patterns
+// This catches security issues before deeper analysis
 export function validateTier1(sql: string): ValidationResult {
   const upperSql = sql.toUpperCase().trim()
 
@@ -121,9 +120,8 @@ export function validateTier1(sql: string): ValidationResult {
   return { valid: true, tier: 1 }
 }
 
-/**
- * Tier 2: Query structure validation
- */
+// Second validation pass: check query structure, limits, and GROUP BY correctness
+// Ensures queries are well-formed and won't cause performance issues
 export async function validateTier2(sql: string): Promise<ValidationResult> {
   const upperSql = sql.toUpperCase().trim()
 
@@ -230,9 +228,8 @@ export async function validateTier2(sql: string): Promise<ValidationResult> {
   return { valid: true, tier: 2 }
 }
 
-/**
- * Tier 3: Schema-based validation
- */
+// Third validation pass: validate against actual database schema
+// Uses fuzzy matching to correct typos in table/column names
 export async function validateTier3(sql: string): Promise<ValidationResult> {
   const schema = await getDatabaseSchema()
   const validTables = new Set(schema.map(t => t.name.toLowerCase()))
@@ -383,9 +380,8 @@ export async function validateTier3(sql: string): Promise<ValidationResult> {
   }
 }
 
-/**
- * Main validation function - runs all three tiers
- */
+// Main validation entry point - runs all three validation tiers in sequence
+// Returns corrected SQL if fuzzy matching fixed any typos
 export async function validateSql(sql: string): Promise<ValidationResult> {
   // Tier 1: Denylist
   const tier1 = validateTier1(sql)

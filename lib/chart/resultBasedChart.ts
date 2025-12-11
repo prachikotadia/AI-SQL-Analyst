@@ -1,18 +1,15 @@
-/**
- * Generate chart specification based on SQL result shape (not LLM)
- */
+// Generate chart specs by analyzing query results, not relying on LLM output
+// This is more reliable since we can inspect actual data structure
 
 import type { ChartSpec } from '@/types'
 
 export interface ChartGenerationResult {
   chartSpec: ChartSpec
-  chartData: any[]
+  chartData: Record<string, unknown>[]
 }
 
-/**
- * Detect if a column is likely a date/time column
- */
-function isDateColumn(columnName: string, sampleValue: any): boolean {
+// Check if a column looks like a date/time field based on name and sample value
+function isDateColumn(columnName: string, sampleValue: unknown): boolean {
   if (!sampleValue) return false
   const colLower = columnName.toLowerCase()
   if (/date|time|timestamp|created|updated|year|month|day/i.test(colLower)) {
@@ -25,17 +22,13 @@ function isDateColumn(columnName: string, sampleValue: any): boolean {
   return false
 }
 
-/**
- * Detect if a value is numeric
- */
-function isNumeric(value: any): boolean {
+// Check if a value can be treated as a number for charting
+function isNumeric(value: unknown): boolean {
   if (value === null || value === undefined) return false
   return typeof value === 'number' || !isNaN(Number(value))
 }
 
-/**
- * Get human-readable label for a column name
- */
+// Convert column names to readable labels for chart axes
 function getColumnLabel(columnName: string): string {
   const labels: Record<string, string> = {
     'City': 'City',
@@ -63,19 +56,16 @@ function getColumnLabel(columnName: string): string {
     .trim()
 }
 
-/**
- * Check if column is a coordinate component (should be avoided for charts)
- */
+// Coordinate components like LonD/LatM aren't useful for charts - skip them
 function isCoordinateComponent(columnName: string): boolean {
   const coordCols = ['LonD', 'LonM', 'LonS', 'EW', 'LatD', 'LatM', 'LatS', 'NS']
   return coordCols.includes(columnName)
 }
 
-/**
- * Generate chart from SQL result rows
- */
+// Analyze query results and pick the best chart type automatically
+// Looks at column types, query text, and data patterns to decide
 export function generateChartFromResult(
-  rows: any[],
+  rows: Record<string, unknown>[],
   columns: Array<{ name: string; type: string }>,
   query: string,
   totalCount?: number
@@ -149,26 +139,86 @@ export function generateChartFromResult(
   }
 
   // Case 3: Multiple columns - intelligently select best category + numeric
+  // CRITICAL: Analyze query to find relevant fields mentioned in the query
+  const queryLower = query.toLowerCase()
+  
+  // First, identify all numeric and category columns
   const numericColumns = columnNames.filter(col => 
-    isNumeric(firstRow[col]) && !isCoordinateComponent(col)
+    isNumeric(firstRow[col]) && !isCoordinateComponent(col) && col !== 'Index' && col !== 'index'
   )
   const categoryColumns = columnNames.filter(col => 
-    !isNumeric(firstRow[col]) && !isDateColumn(col, firstRow[col]) && !isCoordinateComponent(col)
+    !isNumeric(firstRow[col]) && !isDateColumn(col, firstRow[col]) && !isCoordinateComponent(col) &&
+    col !== 'Index' && col !== 'index'
   )
-
-  // Prefer City or State for X-axis if available
-  const preferredXColumns = ['City', 'State', 'city', 'state']
-  const bestXColumn = categoryColumns.find(col => preferredXColumns.includes(col)) || categoryColumns[0]
   
+  // Find numeric columns mentioned in query (price, cost, amount, revenue, etc.)
+  const queryRelevantNumericColumns = numericColumns.filter(col => {
+    const colLower = col.toLowerCase()
+    // Check if column name or query mentions similar terms
+    const queryHasPrice = queryLower.includes('price') || queryLower.includes('cost') || 
+                         queryLower.includes('amount') || queryLower.includes('revenue') ||
+                         queryLower.includes('value') || queryLower.includes('total')
+    const colIsPrice = colLower.includes('price') || colLower.includes('cost') ||
+                      colLower.includes('amount') || colLower.includes('revenue') ||
+                      colLower.includes('value') || colLower.includes('total')
+    
+    // Check for other common numeric fields
+    if (queryLower.includes(colLower) || (queryHasPrice && colIsPrice)) {
+      return true
+    }
+    
+    // Check for count, sum, avg, max, min aggregations
+    if (queryLower.includes('count') && colLower.includes('count')) return true
+    if (queryLower.includes('sum') && colLower.includes('sum')) return true
+    if (queryLower.includes('average') || queryLower.includes('avg')) {
+      if (colLower.includes('avg') || colLower.includes('average')) return true
+    }
+    if (queryLower.includes('maximum') || queryLower.includes('max')) {
+      if (colLower.includes('max') || colLower.includes('maximum')) return true
+    }
+    if (queryLower.includes('minimum') || queryLower.includes('min')) {
+      if (colLower.includes('min') || colLower.includes('minimum')) return true
+    }
+    
+    return false
+  })
+  
+  // Find category columns mentioned in query (name, product, city, state, etc.)
+  const queryRelevantCategoryColumns = categoryColumns.filter(col => {
+    const colLower = col.toLowerCase()
+    // Check if column name appears in query
+    if (queryLower.includes(colLower)) return true
+    
+    // Check for common synonyms
+    if ((queryLower.includes('product') || queryLower.includes('item')) && 
+        (colLower.includes('name') || colLower.includes('product') || colLower.includes('item'))) {
+      return true
+    }
+    if (queryLower.includes('city') && colLower.includes('city')) return true
+    if (queryLower.includes('state') && colLower.includes('state')) return true
+    
+    return false
+  })
+
+  // Prioritize query-relevant columns
+  const bestNumericColumn = queryRelevantNumericColumns.length > 0 
+    ? queryRelevantNumericColumns[0]
+    : (numericColumns.find(col => !col.toLowerCase().includes('index')) || numericColumns[0])
+  
+  const bestCategoryColumn = queryRelevantCategoryColumns.length > 0
+    ? queryRelevantCategoryColumns[0]
+    : (categoryColumns.find(col => 
+        ['Name', 'name', 'Product', 'product', 'City', 'city', 'State', 'state'].includes(col)
+      ) || categoryColumns[0])
+
   // For coordinate queries, prefer showing count by location rather than raw coordinates
-  const queryLower = query.toLowerCase()
   const isCoordinateQuery = queryLower.includes('longitude') || queryLower.includes('latitude') || 
                            queryLower.includes('west') || queryLower.includes('east') ||
                            queryLower.includes('north') || queryLower.includes('south')
   
-  if (isCoordinateQuery && bestXColumn && rows.length > 0) {
+  if (isCoordinateQuery && bestCategoryColumn && rows.length > 0) {
     // Group by location (City or State) and show count
-    const locationKey = bestXColumn
+    const locationKey = bestCategoryColumn
     const grouped: Record<string, number> = {}
     
     rows.forEach(row => {
@@ -194,17 +244,46 @@ export function generateChartFromResult(
     }
   }
 
-  if (bestXColumn && numericColumns.length > 0) {
-    // Use best category + first meaningful numeric
+  // Use query-relevant columns, or fallback to best available
+  if (bestCategoryColumn && bestNumericColumn) {
+    // Sort data by numeric column (descending) for better visualization
+    const sortedRows = [...rows].sort((a, b) => {
+      const valA = Number(a[bestNumericColumn]) || 0
+      const valB = Number(b[bestNumericColumn]) || 0
+      return valB - valA // Descending order
+    })
+    
     return {
       chartSpec: {
         type: 'bar',
-        xField: bestXColumn,
-        yField: numericColumns[0],
+        xField: bestCategoryColumn,
+        yField: bestNumericColumn,
       },
-      chartData: rows.map(row => ({
-        [bestXColumn]: row[bestXColumn],
-        [numericColumns[0]]: Number(row[numericColumns[0]]) || 0,
+      chartData: sortedRows.map(row => ({
+        [bestCategoryColumn]: String(row[bestCategoryColumn] || 'Unknown'),
+        [bestNumericColumn]: Number(row[bestNumericColumn]) || 0,
+      })),
+    }
+  }
+  
+  // Fallback: use any available category + numeric
+  if (bestCategoryColumn && numericColumns.length > 0) {
+    const bestNum = numericColumns.find(col => !col.toLowerCase().includes('index')) || numericColumns[0]
+    const sortedRows = [...rows].sort((a, b) => {
+      const valA = Number(a[bestNum]) || 0
+      const valB = Number(b[bestNum]) || 0
+      return valB - valA
+    })
+    
+    return {
+      chartSpec: {
+        type: 'bar',
+        xField: bestCategoryColumn,
+        yField: bestNum,
+      },
+      chartData: sortedRows.map(row => ({
+        [bestCategoryColumn]: String(row[bestCategoryColumn] || 'Unknown'),
+        [bestNum]: Number(row[bestNum]) || 0,
       })),
     }
   }

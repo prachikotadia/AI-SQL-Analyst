@@ -13,7 +13,7 @@ export async function GET() {
     await prisma.$queryRaw`SELECT 1`
     database = true
   } catch (error) {
-    console.error('Database health check failed:', error)
+    // Database connection failed
   }
 
   // Check LLM (OpenAI API key exists OR LM Studio is configured)

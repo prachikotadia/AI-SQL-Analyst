@@ -28,7 +28,7 @@ export function setSession(session: Session): void {
   try {
     localStorage.setItem(SESSION_KEY, JSON.stringify(session))
   } catch (error) {
-    console.error('Failed to save session:', error)
+    // Failed to save session, continue anyway
   }
 }
 
@@ -38,7 +38,7 @@ export function clearSession(): void {
   try {
     localStorage.removeItem(SESSION_KEY)
   } catch (error) {
-    console.error('Failed to clear session:', error)
+    // Failed to clear session, continue anyway
   }
 }
 

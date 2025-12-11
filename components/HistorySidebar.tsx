@@ -8,7 +8,7 @@ import type { ChatMessage } from '@/lib/data/chatStore'
 import { MessageSquare, Plus } from 'lucide-react'
 
 interface HistorySidebarProps {
-  history: QueryHistoryItem[]
+  history?: Array<{ id: string; query: string; timestamp: Date; summary: string; success: boolean }>
   onQueryClick: (query: string) => void
   theme: 'light' | 'dark'
   onThemeToggle: () => void
@@ -32,7 +32,7 @@ const EXAMPLE_QUERIES = [
 ]
 
 export function HistorySidebar({ 
-  history, 
+  history = [], 
   onQueryClick, 
   theme, 
   onThemeToggle, 

@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 export const ChartSpecSchema = z.object({
-  type: z.enum(['bar', 'line', 'area', 'pie', 'table', 'kpi', 'single_value']).nullable(),
+  type: z.enum(['bar', 'line', 'area', 'pie', 'scatter', 'heatmap', 'table', 'kpi', 'single_value']).nullable(),
   xField: z.string().nullable(),
   yField: z.string().nullable(),
   seriesField: z.string().nullable().optional(),

@@ -13,7 +13,14 @@ export async function generateSql(prompt: string, retryOnError: boolean = true):
     const baseURL = process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
     const isLMStudio = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
     
-    const requestOptions: any = {
+    interface ChatCompletionRequest {
+      model: string
+      messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>
+      temperature: number
+      response_format?: { type: 'json_object' }
+    }
+    
+    const requestOptions: ChatCompletionRequest = {
       model: process.env.OPENAI_MODEL || 'llama-3.2-1b-instruct', // LM Studio model name
       messages: [
         {
@@ -60,12 +67,13 @@ export async function generateSql(prompt: string, retryOnError: boolean = true):
     }
 
     return parsed
-  } catch (error: any) {
-    if (retryOnError && error.message.includes('JSON')) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    if (retryOnError && errorMessage.includes('JSON')) {
       // Retry once with a repair prompt
       const repairPrompt = `Your previous response was invalid JSON. Please fix it and return ONLY valid JSON.
 
-Previous response: ${error.message}
+Previous response: ${errorMessage}
 
 Original prompt: ${prompt}
 

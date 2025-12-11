@@ -68,13 +68,18 @@ async function saveEvaluationsToFile(): Promise<void> {
     const toSave = evaluations.slice(-10000)
     await fs.writeFile(LOG_FILE_PATH, JSON.stringify(toSave, null, 2), 'utf-8')
   } catch (error) {
-    console.error('Failed to save evaluations to file:', error)
+    // Failed to save evaluations to file, continue anyway
   }
 }
 
 // Initialize: load from file on module load (server-side only)
 if (typeof window === 'undefined') {
-  loadEvaluationsFromFile().catch(console.error)
+  loadEvaluationsFromFile().catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    if (process.env.NODE_ENV === 'development') {
+      console.warn('[Evaluator] Failed to load evaluations from file:', message)
+    }
+  })
 }
 
 export function logEvaluation(evaluation: Omit<QueryEvaluation, 'timestamp'>): void {
@@ -92,7 +97,12 @@ export function logEvaluation(evaluation: Omit<QueryEvaluation, 'timestamp'>): v
 
   // Save to file asynchronously (don't block)
   if (typeof window === 'undefined') {
-    saveEvaluationsToFile().catch(console.error)
+    saveEvaluationsToFile().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[Evaluator] Failed to save evaluations to file:', message)
+      }
+    })
   }
 }
 

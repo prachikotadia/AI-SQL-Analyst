@@ -82,7 +82,7 @@ async function parseFile(file: File): Promise<{ data: any[]; headers: string[]; 
     try {
       await unlink(tempPath)
     } catch (error) {
-      console.error('Failed to delete temp file:', error)
+      // Failed to delete temp file, continue anyway
     }
   }
 }

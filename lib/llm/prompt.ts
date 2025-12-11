@@ -10,7 +10,7 @@ export function buildChatPrompt(
   userQuery: string,
   tableName: string,
   columns: Array<{ name: string; type: string }>,
-  data: any[]
+  data: Record<string, unknown>[]
 ): string {
   const columnList = columns.map(c => `  - ${c.name} (${c.type})`).join('\n')
   const columnNames = columns.map(c => c.name).join(', ')

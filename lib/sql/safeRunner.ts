@@ -22,15 +22,14 @@ function getPgPool(): Pool {
 }
 
 export interface ExecutionResult {
-  data: Record<string, any>[]
+  data: Record<string, unknown>[]
   columns: ColumnMetadata[]
   error?: string
 }
 
-/**
- * Execute SQL safely using pg for parameterized queries
- */
-export async function executeSqlSafe(sql: string, params: any[] = []): Promise<ExecutionResult> {
+// Execute SQL using PostgreSQL connection pool with parameterized queries
+// This is safer than raw SQL but we use Prisma executor by default
+export async function executeSqlSafe(sql: string, params: unknown[] = []): Promise<ExecutionResult> {
   const startTime = Date.now()
   const pool = getPgPool()
 
@@ -47,13 +46,31 @@ export async function executeSqlSafe(sql: string, params: any[] = []): Promise<E
       cleanSql = cleanSql.split(';')[0].trim()
     }
 
-    // Use Promise.race for timeout
-    const result = await Promise.race([
-      pool.query(cleanSql, params),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Query timeout')), MAX_EXECUTION_TIME_MS)
-      ),
-    ])
+    // Use Promise.race for timeout with proper cleanup
+    let timeoutId: NodeJS.Timeout | null = null
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('Query timeout')), MAX_EXECUTION_TIME_MS)
+    })
+    
+    let result
+    try {
+      result = await Promise.race([
+        pool.query(cleanSql, params),
+        timeoutPromise,
+      ])
+      
+      // Clear timeout if query completed first
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+    } catch (error) {
+      // Clear timeout on error
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+      throw error
+    }
 
     const executionTime = Date.now() - startTime
 
@@ -106,18 +123,18 @@ export async function executeSqlSafe(sql: string, params: any[] = []): Promise<E
       data,
       columns,
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Database execution error'
     return {
       data: [],
       columns: [],
-      error: error.message || 'Database execution error',
+      error: errorMessage,
     }
   }
 }
 
-/**
- * Execute SQL using Prisma (for simpler queries)
- */
+// Execute SQL using Prisma's raw query executor
+// Handles timeouts, type conversion, and result normalization
 export async function executeSqlPrisma(sql: string): Promise<ExecutionResult> {
   const startTime = Date.now()
 
@@ -134,12 +151,31 @@ export async function executeSqlPrisma(sql: string): Promise<ExecutionResult> {
       cleanSql = cleanSql.split(';')[0].trim()
     }
 
-    const result = await Promise.race([
-      prisma.$queryRawUnsafe(cleanSql),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Query timeout')), MAX_EXECUTION_TIME_MS)
-      ),
-    ]) as any[]
+    // Use Promise.race for timeout with proper cleanup
+    let timeoutId: NodeJS.Timeout | null = null
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error('Query timeout')), MAX_EXECUTION_TIME_MS)
+    })
+    
+    let result: unknown[]
+    try {
+      result = await Promise.race([
+        prisma.$queryRawUnsafe(cleanSql),
+        timeoutPromise,
+      ]) as unknown[]
+      
+      // Clear timeout if query completed first
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+        timeoutId = null
+      }
+    } catch (error) {
+      // Clear timeout on error
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+      throw error
+    }
 
     const executionTime = Date.now() - startTime
 
@@ -202,11 +238,12 @@ export async function executeSqlPrisma(sql: string): Promise<ExecutionResult> {
       data,
       columns,
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Database execution error'
     return {
       data: [],
       columns: [],
-      error: error.message || 'Database execution error',
+      error: errorMessage,
     }
   }
 }

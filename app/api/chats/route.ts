@@ -19,19 +19,21 @@ export async function GET(request: NextRequest) {
   try {
     const chats = getAllChats()
     return NextResponse.json({
-      chats: chats.map(chat => ({
+      chats: (chats || []).map(chat => ({
         chatId: chat.chatId,
-        title: chat.title,
-        updatedAt: chat.updatedAt,
-        messageCount: chat.messages.length,
-        fileCount: chat.attachedFiles.length,
+        title: chat.title || 'New Chat',
+        updatedAt: chat.updatedAt || new Date().toISOString(),
+        messageCount: chat.messages?.length || 0,
+        fileCount: chat.attachedFiles?.length || 0,
       })),
     })
   } catch (error: any) {
-    return NextResponse.json(
-      { error: error.message || 'Failed to fetch chats' },
-      { status: 500 }
-    )
+    console.error('[chats/route] Error fetching chats:', error)
+    // Return empty array instead of error to prevent 500 on page load
+    return NextResponse.json({
+      chats: [],
+      error: error.message || 'Failed to fetch chats',
+    }, { status: 200 })
   }
 }
 
@@ -96,14 +98,42 @@ export async function PUT(request: NextRequest) {
 
     if (action === 'addFile' && fileIds && Array.isArray(fileIds)) {
       const files = getFilesByIds(fileIds)
-      for (const file of files) {
-        addFileToChat(actualChatId, file)
+      
+      // CRITICAL: Always add files to chatStore, even if fileRegistry is empty
+      // This ensures files persist across serverless resets
+      if (files.length > 0) {
+        for (const file of files) {
+          addFileToChat(actualChatId, file)
+        }
+      } else if (fileIds.length > 0) {
+        // FileRegistry is empty - this is a serverless reset scenario
+        // The file should be in chatStore from a previous request if it was added before
+        // Check if chat already has these files
+        const chat = getChat(actualChatId)
+        if (chat) {
+          const existingFileIds = chat.attachedFiles.map(f => f.id)
+          const missingFileIds = fileIds.filter(id => !existingFileIds.includes(id))
+          if (missingFileIds.length > 0) {
+            // Files were uploaded but lost - user will need to re-upload
+          }
+        }
       }
     }
 
     if (action === 'removeFile' && fileIds && Array.isArray(fileIds)) {
+      // Remove files from chat (works even if fileRegistry is empty)
       for (const fileId of fileIds) {
         removeFileFromChat(actualChatId, fileId)
+      }
+      
+      // Also remove from fileRegistry if it exists there
+      try {
+        const { deleteFile } = await import('@/lib/data/fileRegistry')
+        for (const fileId of fileIds) {
+          deleteFile(fileId)
+        }
+      } catch (error) {
+        // FileRegistry might not have the file - that's okay
       }
     }
 

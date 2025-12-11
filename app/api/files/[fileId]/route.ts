@@ -15,26 +15,34 @@ export async function GET(
       )
     }
 
+    // Get file from disk storage
     const file = getFileById(fileId)
     
     if (!file) {
       return NextResponse.json(
-        { error: 'File not found' },
+        { error: 'File not found. The file may have been deleted or the server was restarted.' },
         { status: 404 }
       )
     }
+
+    // Limit data to first 1000 rows for performance in the modal
+    const limitedData = file.data && file.data.length > 1000 
+      ? file.data.slice(0, 1000)
+      : (file.data || [])
 
     return NextResponse.json({
       id: file.id,
       fileName: file.fileName,
       tableName: file.tableName,
-      columns: file.columns,
-      data: file.data,
-      rowCount: file.data.length,
-      uploadedAt: file.uploadedAt,
+      columns: file.columns || [],
+      data: limitedData,
+      rowCount: file.data?.length || 0,
+      displayedRowCount: limitedData.length,
+      uploadedAt: file.uploadedAt instanceof Date 
+        ? file.uploadedAt.toISOString() 
+        : file.uploadedAt,
     })
   } catch (error: any) {
-    console.error('Error fetching file:', error)
     return NextResponse.json(
       { error: error.message || 'Failed to fetch file' },
       { status: 500 }

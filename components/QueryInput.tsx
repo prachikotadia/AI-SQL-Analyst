@@ -2,12 +2,15 @@
 
 import { useState, KeyboardEvent, useRef, useEffect } from 'react'
 import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { RunButton } from './RunButton'
-import { Paperclip, X, FileText, Loader2, History } from 'lucide-react'
+import { Paperclip, X, FileText, Loader2, Eye, Plus } from 'lucide-react'
 import { useToast } from '@/components/ui/use-toast'
-import { saveFileToStorage, getStoredFiles, getFileHistory, removeFileFromStorage, type StoredFile } from '@/lib/storage/localFileStorage'
+import { FileViewerModal } from './FileViewerModal'
+import { QuerySuggestions } from './QuerySuggestions'
+import { QueryTemplates } from './QueryTemplates'
+import { FilePreviewModal } from './FilePreviewModal'
+import { saveRecentQuery } from '@/lib/utils/querySuggestions'
 
 interface AttachedFile {
   id: string
@@ -16,12 +19,13 @@ interface AttachedFile {
 }
 
 interface QueryInputProps {
-  onQuery: (query: string, timeRange?: string, fileIds?: string[]) => void
+  onQuery: (query: string, fileIds?: string[]) => void
   isLoading: boolean
   chatId?: string
   chatFiles?: AttachedFile[]
   onFilesChange?: (files: AttachedFile[]) => void
   onChatCreated?: (chatId: string) => void
+  onNewQuery?: () => void // Callback to clear input for new query in same chat
 }
 
 export function QueryInput({ 
@@ -30,64 +34,85 @@ export function QueryInput({
   chatId,
   chatFiles = [],
   onFilesChange,
-  onChatCreated
+  onChatCreated,
+  onNewQuery
 }: QueryInputProps) {
   const [query, setQuery] = useState('')
-  const [timeRange, setTimeRange] = useState<string>('all_time')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [isUploading, setIsUploading] = useState(false)
-  const [showFileHistory, setShowFileHistory] = useState(false)
+  const [viewingFile, setViewingFile] = useState<{ id: string; fileName: string } | null>(null)
+  const [showSuggestions, setShowSuggestions] = useState(false)
+  const [previewFile, setPreviewFile] = useState<File | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
+  const queryInputRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const isRemovingRef = useRef(false)
+  const timeoutRefs = useRef<Set<NodeJS.Timeout>>(new Set())
   const { toast } = useToast()
 
   // Sync chatFiles prop to attachedFiles state when chat changes
+  // CRITICAL: Only sync if chatFiles actually changed (not on every render)
+  // This prevents overriding local removals
+  const prevChatFilesRef = useRef<string>('')
+  
   useEffect(() => {
-    if (chatFiles && Array.isArray(chatFiles) && chatFiles.length > 0) {
-      const currentFileIds = attachedFiles.map(f => f.id).sort().join(',')
-      const newFileIds = chatFiles.map(f => f.id).sort().join(',')
-      if (currentFileIds !== newFileIds) {
-        setAttachedFiles(chatFiles)
-      }
-    } else if (chatFiles && Array.isArray(chatFiles) && chatFiles.length === 0) {
-      if (chatId) {
-        const storedChatFiles = localStorage.getItem(`chat_files_${chatId}`)
-        if (storedChatFiles) {
-          try {
-            const files = JSON.parse(storedChatFiles)
-            if (files.length > 0) {
-              setAttachedFiles(files)
-              setTimeout(() => {
-                if (onFilesChange) {
-                  onFilesChange(files)
-                }
-              }, 0)
-            }
-          } catch (error) {
-            console.warn('Failed to restore files from localStorage:', error)
-          }
+    // Skip sync if we're in the middle of removing a file
+    if (isRemovingRef.current) {
+      return
+    }
+    
+    const chatFilesKey = JSON.stringify(chatFiles?.map(f => ({ id: f.id, fileName: f.fileName })) || [])
+    
+    // Only update if chatFiles actually changed
+    if (prevChatFilesRef.current !== chatFilesKey) {
+      prevChatFilesRef.current = chatFilesKey
+      
+      if (chatFiles && Array.isArray(chatFiles) && chatFiles.length > 0) {
+        const currentFileIds = attachedFiles.map(f => f.id).sort().join(',')
+        const newFileIds = chatFiles.map(f => f.id).sort().join(',')
+        if (currentFileIds !== newFileIds) {
+          setAttachedFiles(chatFiles)
         }
-      } else {
-        setAttachedFiles([])
+      } else if (chatFiles && Array.isArray(chatFiles) && chatFiles.length === 0) {
+        // Only clear if we're sure there are no files (not just a temporary state)
+        if (chatId) {
+          const storedChatFiles = localStorage.getItem(`chat_files_${chatId}`)
+          if (storedChatFiles) {
+            try {
+              const files = JSON.parse(storedChatFiles)
+              if (files.length > 0) {
+                setAttachedFiles(files)
+                const changeTimeout = setTimeout(() => {
+                  timeoutRefs.current.delete(changeTimeout)
+                  if (onFilesChange) {
+                    onFilesChange(files)
+                  }
+                }, 0)
+                timeoutRefs.current.add(changeTimeout)
+              } else {
+                setAttachedFiles([])
+              }
+            } catch (error) {
+              setAttachedFiles([])
+            }
+          } else {
+            setAttachedFiles([])
+          }
+        } else {
+          setAttachedFiles([])
+        }
       }
-    } else {
-      setAttachedFiles([])
     }
   }, [chatFiles, chatId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Close file history dropdown when clicking outside
+  // Cleanup timeouts on unmount
   useEffect(() => {
-    if (!showFileHistory) return
-    
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement
-      if (!target.closest('.file-history-container')) {
-        setShowFileHistory(false)
-      }
+    return () => {
+      timeoutRefs.current.forEach(timeout => clearTimeout(timeout))
+      timeoutRefs.current.clear()
     }
-    
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showFileHistory])
+  }, [])
+
 
   const handleFileSelect = async (file: File) => {
     if (!file) return
@@ -118,6 +143,45 @@ export function QueryInput({
     try {
       const formData = new FormData()
       formData.append('file', file)
+      
+      // CRITICAL: chatId is REQUIRED - ensure we have one before uploading
+      let chatIdToUse = chatId
+      if (!chatIdToUse) {
+        try {
+          const createRes = await fetch('/api/chats', { method: 'POST' })
+          if (createRes.ok) {
+            const createData = await createRes.json()
+            chatIdToUse = createData.chatId
+            if (onChatCreated && chatIdToUse) {
+              onChatCreated(chatIdToUse)
+            }
+          } else {
+            throw new Error('Failed to create chat')
+          }
+        } catch (error) {
+          toast({
+            title: 'Upload failed',
+            description: 'Could not create or retrieve chat. Please try again.',
+            variant: 'destructive',
+          })
+          setIsUploading(false)
+          return
+        }
+      }
+      
+      if (!chatIdToUse) {
+        toast({
+          title: 'Upload failed',
+          description: 'Chat ID is required. Please try again.',
+          variant: 'destructive',
+        })
+        setIsUploading(false)
+        return
+      }
+      
+      // CRITICAL: ALWAYS send chatId with upload so file is added to chatStore immediately
+      // This ensures files persist even if serverless resets
+      formData.append('chatId', chatIdToUse)
 
       const response = await fetch('/api/attachments', {
         method: 'POST',
@@ -136,20 +200,9 @@ export function QueryInput({
         rowCount: data.rowCount,
       }
       
-      let chatIdToUse = chatId
-      if (!chatIdToUse) {
-        try {
-          const createRes = await fetch('/api/chats', { method: 'POST' })
-          if (createRes.ok) {
-            const createData = await createRes.json()
-            chatIdToUse = createData.chatId
-            if (onChatCreated && chatIdToUse) {
-              onChatCreated(chatIdToUse)
-            }
-          }
-        } catch (error) {
-          console.warn('Failed to create chat:', error)
-        }
+      // Use chatId from response if provided (backend returns it)
+      if (data.chatId) {
+        chatIdToUse = data.chatId
       }
       
       let updatedFiles: AttachedFile[] = []
@@ -165,9 +218,11 @@ export function QueryInput({
       })
       
       if (updatedFiles.length > 0 && onFilesChange) {
-        setTimeout(() => {
+        const changeTimeout = setTimeout(() => {
+          timeoutRefs.current.delete(changeTimeout)
           onFilesChange(updatedFiles)
         }, 0)
+        timeoutRefs.current.add(changeTimeout)
       }
       
       if (chatIdToUse) {
@@ -181,9 +236,15 @@ export function QueryInput({
               fileIds: [data.fileId],
             }),
           })
-          const responseData = await res.json().catch(() => ({}))
+          const responseData = await res.json().catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : 'Unknown error'
+            if (process.env.NODE_ENV === 'development') {
+              console.warn('[QueryInput] Failed to parse response:', message)
+            }
+            return {}
+          })
           if (!res.ok) {
-            console.warn('Failed to add file to chat:', responseData.error)
+            // Failed to add file to chat, but file is already uploaded
           } else if (responseData?.chat) {
             const serverFiles = responseData.chat.attachedFiles || []
             const fileList = serverFiles.map((f: any) => ({
@@ -194,34 +255,23 @@ export function QueryInput({
             setAttachedFiles(fileList)
             
             try {
-              for (const serverFile of serverFiles) {
-                const storedFile: StoredFile = {
-                  id: serverFile.id,
-                  fileName: serverFile.fileName,
-                  tableName: serverFile.tableName || data.tableName,
-                  columns: serverFile.columns || data.columns || [],
-                  data: [],
-                  uploadedAt: new Date().toISOString(),
-                  rowCount: serverFile.rowCount || data.rowCount || 0,
-                }
-                saveFileToStorage(storedFile)
-              }
-              
               if (chatIdToUse) {
                 localStorage.setItem(`chat_files_${chatIdToUse}`, JSON.stringify(fileList))
               }
             } catch (error) {
-              console.warn('Failed to save files to localStorage:', error)
+              // Failed to save files to localStorage, continue anyway
             }
             
             if (onFilesChange) {
-              setTimeout(() => {
+              const changeTimeout = setTimeout(() => {
+                timeoutRefs.current.delete(changeTimeout)
                 onFilesChange(fileList)
               }, 0)
+              timeoutRefs.current.add(changeTimeout)
             }
           }
         } catch (error: any) {
-          console.warn('Failed to add file to chat:', error.message)
+          // Failed to add file to chat, but file is already uploaded
           let fallbackFiles: AttachedFile[] = []
           setAttachedFiles(prev => {
             if (prev.some(f => f.id === newFile.id)) {
@@ -231,9 +281,11 @@ export function QueryInput({
             return fallbackFiles
           })
           if (fallbackFiles.length > 0 && onFilesChange) {
-            setTimeout(() => {
+            const changeTimeout = setTimeout(() => {
+              timeoutRefs.current.delete(changeTimeout)
               onFilesChange(fallbackFiles)
             }, 0)
+            timeoutRefs.current.add(changeTimeout)
           }
         }
       } else {
@@ -246,9 +298,11 @@ export function QueryInput({
           return noChatFiles
         })
         if (noChatFiles.length > 0 && onFilesChange) {
-          setTimeout(() => {
+          const changeTimeout = setTimeout(() => {
+            timeoutRefs.current.delete(changeTimeout)
             onFilesChange(noChatFiles)
           }, 0)
+          timeoutRefs.current.add(changeTimeout)
         }
       }
 
@@ -257,7 +311,6 @@ export function QueryInput({
         description: `${data.fileName} (${data.rowCount} rows)`,
       })
     } catch (error: any) {
-      console.error('File upload error:', error)
       toast({
         title: 'Upload failed',
         description: error.message || 'Failed to upload file. Please try again.',
@@ -275,11 +328,49 @@ export function QueryInput({
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      handleFileSelect(file)
+      // Show preview modal first
+      setPreviewFile(file)
+      setShowPreview(true)
+    }
+  }
+
+  const handlePreviewConfirm = (file: File) => {
+    setShowPreview(false)
+    setPreviewFile(null)
+    handleFileSelect(file)
+  }
+
+  const handlePreviewCancel = () => {
+    setShowPreview(false)
+    setPreviewFile(null)
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
     }
   }
 
   const handleRemoveFile = async (fileId: string) => {
+    // Set flag to prevent useEffect from overriding our removal
+    isRemovingRef.current = true
+    
+    // CRITICAL: Optimistically update UI immediately - file should disappear right away
+    const currentFiles = [...attachedFiles]
+    const updatedFiles = currentFiles.filter(f => f.id !== fileId)
+    
+    // Update UI state immediately
+    setAttachedFiles(updatedFiles)
+    
+    // Update localStorage immediately
+    if (chatId) {
+      localStorage.setItem(`chat_files_${chatId}`, JSON.stringify(updatedFiles))
+    }
+    
+    // Notify parent component immediately
+    if (onFilesChange) {
+      onFilesChange(updatedFiles)
+    }
+    
+    // Then sync with backend
     if (chatId) {
       try {
         const res = await fetch('/api/chats', {
@@ -291,27 +382,85 @@ export function QueryInput({
             fileIds: [fileId],
           }),
         })
+        
         if (!res.ok) {
+          // Revert on error
+          setAttachedFiles(currentFiles)
+          if (chatId) {
+            localStorage.setItem(`chat_files_${chatId}`, JSON.stringify(currentFiles))
+          }
+          if (onFilesChange) {
+            onFilesChange(currentFiles)
+          }
           const errorData = await res.json().catch(() => ({}))
           throw new Error(errorData.error || 'Failed to remove file from chat')
         }
+        
+        // Get updated file list from backend response to ensure sync
+        const responseData = await res.json().catch(() => ({}))
+        if (responseData?.chat?.attachedFiles) {
+          const serverFiles = responseData.chat.attachedFiles.map((f: any) => ({
+            id: f.id,
+            fileName: f.fileName,
+            rowCount: f.rowCount || f.data?.length || 0,
+          }))
+          
+          // Update state with server response (source of truth)
+          setAttachedFiles(serverFiles)
+          
+          // Update localStorage with server response
+          if (chatId) {
+            localStorage.setItem(`chat_files_${chatId}`, JSON.stringify(serverFiles))
+          }
+          
+          // Notify parent component with server response
+          if (onFilesChange) {
+            onFilesChange(serverFiles)
+          }
+          
+          toast({
+            title: 'File removed',
+            description: 'File has been removed from this chat.',
+          })
+        } else {
+          // Backend didn't return files, but our optimistic update already happened
+          toast({
+            title: 'File removed',
+            description: 'File has been removed from this chat.',
+          })
+        }
       } catch (error: any) {
+        // Revert on error
+        setAttachedFiles(currentFiles)
+        if (chatId) {
+          localStorage.setItem(`chat_files_${chatId}`, JSON.stringify(currentFiles))
+        }
+        if (onFilesChange) {
+          onFilesChange(currentFiles)
+        }
         toast({
-          title: 'Failed to remove file from chat',
+          title: 'Failed to remove file',
           description: error.message || 'Please try again',
           variant: 'destructive',
         })
-        return
+      } finally {
+        // Clear the removal flag after a short delay to allow state to settle
+        const removeTimeout = setTimeout(() => {
+          timeoutRefs.current.delete(removeTimeout)
+          isRemovingRef.current = false
+        }, 100)
+        timeoutRefs.current.add(removeTimeout)
       }
-    }
-    
-    const updatedFiles = attachedFiles.filter(f => f.id !== fileId)
-    setAttachedFiles(updatedFiles)
-    
-    if (onFilesChange) {
+    } else {
+      // No chatId - just update local state
+      toast({
+        title: 'File removed',
+        description: 'File has been removed.',
+      })
+      // Clear the removal flag
       setTimeout(() => {
-        onFilesChange(updatedFiles)
-      }, 0)
+        isRemovingRef.current = false
+      }, 100)
     }
   }
 
@@ -342,13 +491,28 @@ export function QueryInput({
         })
         return
       }
+      const trimmedQuery = query.trim()
+      saveRecentQuery(trimmedQuery)
+      setShowSuggestions(false)
       const fileIds = attachedFiles.map(f => f.id)
-      onQuery(query.trim(), timeRange, fileIds)
+      onQuery(trimmedQuery, fileIds)
     }
   }
 
+  const handleSuggestionSelect = (suggestion: string) => {
+    setQuery(suggestion)
+    setShowSuggestions(false)
+    queryInputRef.current?.focus()
+  }
+
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+    // Ctrl/Cmd + Enter to run query
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      if (!isLoading && query.trim()) {
+        e.preventDefault()
+        handleSubmit()
+      }
+    } else if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
       if (!isLoading && query.trim()) {
         e.preventDefault()
         handleSubmit()
@@ -364,14 +528,33 @@ export function QueryInput({
         onDrop={handleDrop}
       >
         <div className="flex gap-4">
-          <div className="flex-1">
+          <div className="flex-1 relative">
             <Textarea
+              ref={queryInputRef}
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={(e) => {
+                setQuery(e.target.value)
+                setShowSuggestions(e.target.value.length > 0 || true)
+              }}
               onKeyDown={handleKeyDown}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={(e) => {
+                // Delay hiding suggestions to allow clicks
+                const blurTimeout = setTimeout(() => {
+                  timeoutRefs.current.delete(blurTimeout)
+                  setShowSuggestions(false)
+                }, 200)
+                timeoutRefs.current.add(blurTimeout)
+              }}
               placeholder="Ask a question in natural language... e.g., 'Show revenue in the last 30 days by product category' (Press Enter to run, Shift+Enter for newline)"
               className="neumorphic-input min-h-[100px] resize-none transition-all duration-200 border-0"
               disabled={isLoading}
+            />
+            <QuerySuggestions
+              input={query}
+              onSelect={handleSuggestionSelect}
+              onClose={() => setShowSuggestions(false)}
+              visible={showSuggestions && !isLoading}
             />
             {attachedFiles.length === 0 && (
               <p className="text-sm text-muted-foreground mt-2 px-1">
@@ -412,123 +595,35 @@ export function QueryInput({
                 </>
               )}
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setShowFileHistory(!showFileHistory)}
-              disabled={isLoading || isUploading}
-              className="neumorphic-button gap-2 ml-2"
-              title="Show file history"
-            >
-              <History className="h-4 w-4" />
-            </Button>
-            {showFileHistory && (
-              <div className="absolute top-full left-0 mt-2 z-50 bg-background border border-border rounded-lg shadow-lg p-2 max-h-64 overflow-y-auto min-w-[300px] file-history-container">
-                <div className="text-sm font-semibold mb-2 px-2">File History</div>
-                {getFileHistory().length === 0 ? (
-                  <div className="text-sm text-muted-foreground px-2 py-4">No previous files</div>
-                ) : (
-                  <div className="space-y-1">
-                    {getFileHistory().map((storedFile) => (
-                      <div
-                        key={storedFile.id}
-                        className="flex items-center justify-between p-2 hover:bg-muted rounded cursor-pointer group"
-                        onClick={async () => {
-                          try {
-                            setIsUploading(true)
-                            
-                            if (!storedFile.data || storedFile.data.length === 0) {
-                              toast({
-                                title: 'Cannot re-upload file',
-                                description: 'File data is not available. Please upload the file again manually.',
-                                variant: 'destructive',
-                              })
-                              setIsUploading(false)
-                              return
-                            }
-                            
-                            const csvContent = [
-                              storedFile.columns.map(c => c.name).join(','),
-                              ...storedFile.data.map(row =>
-                                storedFile.columns.map(col => {
-                                  const val = row[col.name]
-                                  if (val === null || val === undefined) return ''
-                                  const str = String(val)
-                                  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-                                    return `"${str.replace(/"/g, '""')}"`
-                                  }
-                                  return str
-                                }).join(',')
-                              ),
-                            ].join('\n')
-                            
-                            if (csvContent.split('\n').length < 2) {
-                              toast({
-                                title: 'Invalid file data',
-                                description: 'File data is incomplete. Please upload the file again manually.',
-                                variant: 'destructive',
-                              })
-                              setIsUploading(false)
-                              return
-                            }
-                            
-                            const blob = new Blob([csvContent], { type: 'text/csv' })
-                            const file = new File([blob], storedFile.fileName, { type: 'text/csv' })
-                            
-                            await handleFileSelect(file)
-                            setShowFileHistory(false)
-                          } catch (error: any) {
-                            toast({
-                              title: 'Failed to re-upload file',
-                              description: error.message || 'Please try again',
-                              variant: 'destructive',
-                            })
-                          } finally {
-                            setIsUploading(false)
-                          }
-                        }}
-                      >
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium truncate">{storedFile.fileName}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {storedFile.rowCount} rows • {new Date(storedFile.uploadedAt).toLocaleDateString()}
-                            </div>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            removeFileFromStorage(storedFile.id)
-                            toast({
-                              title: 'File removed from history',
-                              description: storedFile.fileName,
-                            })
-                          }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-destructive/10 rounded"
-                        >
-                          <X className="h-3 w-3 text-destructive" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
           
           {/* Attached files chips */}
           {attachedFiles.map((file) => (
             <div
               key={file.id}
-              className="file-pill-success inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all duration-200 cursor-default"
+              className="file-pill-success inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all duration-200"
             >
               <FileText className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
-              <span className="font-medium text-green-700 dark:text-green-300">{file.fileName}</span>
+              <button
+                type="button"
+                onClick={() => setViewingFile({ id: file.id, fileName: file.fileName })}
+                className="font-medium text-green-700 dark:text-green-300 hover:underline cursor-pointer"
+                title={`Click to view ${file.fileName}`}
+                disabled={isLoading}
+              >
+                {file.fileName}
+              </button>
               <span className="text-xs text-green-600/80 dark:text-green-400/80">({file.rowCount} rows)</span>
+              <button
+                type="button"
+                onClick={() => setViewingFile({ id: file.id, fileName: file.fileName })}
+                className="ml-1 hover:bg-green-200/50 dark:hover:bg-green-900/50 rounded p-0.5 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                title={`View ${file.fileName}`}
+                aria-label={`View ${file.fileName}`}
+                disabled={isLoading}
+              >
+                <Eye className="h-3.5 w-3.5 text-green-700 dark:text-green-300" />
+              </button>
               <button
                 type="button"
                 onClick={() => handleRemoveFile(file.id)}
@@ -540,21 +635,53 @@ export function QueryInput({
               </button>
             </div>
           ))}
+          
+          {/* File Viewer Modal */}
+          {viewingFile && (
+            <FileViewerModal
+              open={!!viewingFile}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setViewingFile(null)
+                }
+              }}
+              fileId={viewingFile.id}
+              fileName={viewingFile.fileName}
+            />
+          )}
         </div>
       </div>
+
+      <FilePreviewModal
+        open={showPreview}
+        onOpenChange={setShowPreview}
+        file={previewFile}
+        onConfirm={handlePreviewConfirm}
+        onCancel={handlePreviewCancel}
+      />
       
-      <div className="flex items-center justify-between">
-        <Select value={timeRange} onValueChange={setTimeRange} disabled={isLoading}>
-          <SelectTrigger className="w-[180px] transition-all duration-200">
-            <SelectValue placeholder="Time range" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all_time">All Time</SelectItem>
-            <SelectItem value="last_7_days">Last 7 Days</SelectItem>
-            <SelectItem value="last_30_days">Last 30 Days</SelectItem>
-            <SelectItem value="last_90_days">Last 90 Days</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          {onNewQuery && chatId && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setQuery('')
+                onNewQuery()
+                queryInputRef.current?.focus()
+              }}
+              disabled={isLoading}
+              className="gap-2"
+            >
+              <Plus className="h-4 w-4" />
+              New Query
+            </Button>
+          )}
+          <QueryTemplates onSelectTemplate={(template) => setQuery(template)} />
+        </div>
+        <div className="flex-1" />
         <RunButton 
           onClick={handleSubmit} 
           isLoading={isLoading} 

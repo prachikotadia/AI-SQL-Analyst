@@ -26,7 +26,7 @@ export function SqlPanel({ sql, preview_sql, action_sql }: SqlPanelProps) {
       setCopiedPreview(true)
       setTimeout(() => setCopiedPreview(false), 1500)
     } catch (err) {
-      console.error('Failed to copy:', err)
+      // Failed to copy, user can try again
     }
   }
 
@@ -37,7 +37,7 @@ export function SqlPanel({ sql, preview_sql, action_sql }: SqlPanelProps) {
         setCopiedAction(true)
         setTimeout(() => setCopiedAction(false), 1500)
       } catch (err) {
-        console.error('Failed to copy:', err)
+        // Failed to copy, user can try again
       }
     }
   }

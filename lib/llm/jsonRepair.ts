@@ -176,7 +176,12 @@ function extractPartialJson(jsonString: string): string | null {
     }
     
     // Build minimal valid JSON
-    const minimalJson: any = {
+    const minimalJson: {
+      preview_sql: string | null
+      action_sql: string | null
+      reasoning: string
+      chart: { type: string; xField: string | null; yField: string | null }
+    } = {
       preview_sql: previewSql || null,
       action_sql: actionSql || null,
       reasoning: reasoning || 'Generated SQL query',

@@ -3,7 +3,7 @@ import { z } from 'zod'
 export const ErrorResponseSchema = z.object({
   error: z.object({
     message: z.string(),
-    type: z.enum(['validation', 'execution', 'llm', 'unknown', 'no_files']),
+    type: z.enum(['validation', 'execution', 'llm', 'unknown', 'no_files', 'out_of_scope']),
     code: z.string().optional(),
   }),
 })

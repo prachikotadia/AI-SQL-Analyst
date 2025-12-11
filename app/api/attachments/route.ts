@@ -64,7 +64,7 @@ async function parseFile(file: File): Promise<{ data: any[]; headers: string[]; 
     try {
       await unlink(tempPath)
     } catch (error) {
-      console.error('Failed to delete temp file:', error)
+      // Failed to delete temp file, continue anyway
     }
   }
 }
@@ -111,14 +111,75 @@ export async function POST(request: NextRequest) {
     const tableName = file.name.replace(/\.(csv|xlsx|xls)$/i, '').replace(/[^a-z0-9_]/gi, '_').toLowerCase()
 
     // Register file and get ID
-    const fileId = registerFile({
+    const fileMetadata = {
       fileName: file.name,
       tableName,
       columns,
       data,
       uploadedAt: new Date(),
-    })
-
+    }
+    const fileId = registerFile(fileMetadata)
+    
+    // CRITICAL: chatId is REQUIRED - file MUST be attached to a chat
+    // This ensures files persist and are available for all queries in that chat
+    const chatId = formData.get('chatId') as string | null
+    
+    if (!chatId) {
+      return NextResponse.json(
+        { error: 'chatId is required. File must be attached to a chat.' },
+        { status: 400 }
+      )
+    }
+    
+    // ALWAYS add file to chatStore IMMEDIATELY in the same request
+    // This ensures files persist even if serverless resets between upload and addFile calls
+    // Use dynamic import to avoid circular dependency issues
+    let actualChatId = chatId
+    try {
+      const { getChat, createChat, addFileToChat, getChatFiles } = await import('@/lib/data/chatStore')
+      
+      let chat = getChat(chatId)
+      
+      if (!chat) {
+        // Create chat if it doesn't exist
+        actualChatId = createChat(chatId.startsWith('chat_') ? chatId : undefined)
+        chat = getChat(actualChatId)
+        
+        // If still null, try one more time with generated ID
+        if (!chat) {
+          actualChatId = createChat()
+          chat = getChat(actualChatId)
+        }
+      }
+      
+      if (!chat) {
+        return NextResponse.json(
+          { error: 'Failed to create or retrieve chat. Please try again.' },
+          { status: 500 }
+        )
+      }
+      
+      const fullFileMetadata = { ...fileMetadata, id: fileId }
+      addFileToChat(chat.chatId, fullFileMetadata)
+      
+      // Verify it was added
+      const verifyFiles = getChatFiles(chat.chatId)
+      const fileExists = verifyFiles.some(f => f.id === fileId)
+      if (!fileExists) {
+        return NextResponse.json(
+          { error: 'File was registered but failed to attach to chat. Please try again.' },
+          { status: 500 }
+        )
+      }
+      
+      actualChatId = chat.chatId
+    } catch (error: any) {
+      return NextResponse.json(
+        { error: `Failed to attach file to chat: ${error.message || 'Unknown error'}` },
+        { status: 500 }
+      )
+    }
+    
     return NextResponse.json({
       success: true,
       fileId,
@@ -126,9 +187,9 @@ export async function POST(request: NextRequest) {
       tableName,
       rowCount: data.length,
       columns: columns.map(c => ({ name: c.name, type: c.type })),
+      chatId: actualChatId || chatId, // Return chatId so frontend knows which chat has the file
     })
   } catch (error: any) {
-    console.error('Attachment upload error:', error)
     return NextResponse.json(
       { error: error.message || 'Failed to process file' },
       { status: 500 }

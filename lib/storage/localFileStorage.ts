@@ -29,7 +29,6 @@ export function getStoredFiles(): StoredFile[] {
     const files: StoredFile[] = JSON.parse(stored)
     return files.filter(f => f && f.id && f.fileName)
   } catch (error) {
-    console.error('Error reading stored files:', error)
     return []
   }
 }
@@ -66,7 +65,6 @@ export function saveFileToStorage(file: StoredFile): boolean {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(files))
     return true
   } catch (error) {
-    console.error('Error saving file to storage:', error)
     // If quota exceeded, try to clean up old files
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       const files = getStoredFiles()
@@ -79,7 +77,6 @@ export function saveFileToStorage(file: StoredFile): boolean {
         // Try saving again
         return saveFileToStorage(file)
       } catch (retryError) {
-        console.error('Failed to save after cleanup:', retryError)
         return false
       }
     }
@@ -107,7 +104,6 @@ export function removeFileFromStorage(fileId: string): boolean {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered))
     return true
   } catch (error) {
-    console.error('Error removing file from storage:', error)
     return false
   }
 }

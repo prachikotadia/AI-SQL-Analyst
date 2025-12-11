@@ -3,18 +3,30 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useRef } from 'react'
 import { ReasoningPanel } from './ReasoningPanel'
 import { SqlPanel } from './SqlPanel'
 import { DataTable } from './DataTable'
 import { ChartPanel } from './ChartPanel'
+import { PerformanceMetrics } from './PerformanceMetrics'
+import { DataInsightsPanel } from './DataInsightsPanel'
+import { ExportButton } from './ExportButton'
+import { QueryExplanation } from './QueryExplanation'
+import { ShareButton } from './ShareButton'
+import { BookmarkButton } from './BookmarkButton'
 import type { QueryResponse } from '@/types'
 
 interface ResultsPanelProps {
   response: QueryResponse | null
   isLoading: boolean
+  query?: string
+  chatId?: string
 }
 
-export function ResultsPanel({ response, isLoading }: ResultsPanelProps) {
+export function ResultsPanel({ response, isLoading, query, chatId }: ResultsPanelProps) {
+  const chartElementRef = useRef<HTMLDivElement>(null)
+  
+  // If loading, show skeleton
   if (isLoading) {
     return (
       <div className="space-y-4 animate-in fade-in-50 duration-300">
@@ -50,6 +62,8 @@ export function ResultsPanel({ response, isLoading }: ResultsPanelProps) {
     )
   }
 
+  // Show empty state only if response is truly null/undefined
+  // Always show tabs if response exists (even with empty data)
   if (!response) {
     return (
       <Card className="neumorphic-card">
@@ -87,18 +101,68 @@ export function ResultsPanel({ response, isLoading }: ResultsPanelProps) {
 
   // Always show all 4 tabs: Reasoning, SQL, Data, Chart
   // Even when there's an error, show all sections with available data
+  
+  // Ensure we always have a valid response structure
+  const safeResponse = response || {
+    data: [],
+    columns: [],
+    reasoning: 'No response available',
+    preview_sql: null,
+    action_sql: null,
+    sql: '',
+    chartSpec: { type: 'table', xField: null, yField: null },
+    error: null,
+  }
+  
   return (
     <div className="w-full space-y-4">
-      {response.error && (
+      {/* Performance Metrics */}
+      {safeResponse.performanceMetrics && (
+        <PerformanceMetrics
+          executionTimeMs={safeResponse.performanceMetrics.executionTimeMs}
+          tokenUsage={safeResponse.performanceMetrics.tokenUsage}
+          queryComplexity={safeResponse.performanceMetrics.queryComplexity}
+          sqlLength={safeResponse.performanceMetrics.sqlLength}
+        />
+      )}
+
+      {safeResponse.error && (
         <Card className="neumorphic-card border-destructive/50">
           <CardHeader>
             <CardTitle className="text-destructive">Error</CardTitle>
-            <CardDescription>{response.error.message}</CardDescription>
+            <CardDescription>{safeResponse.error.message}</CardDescription>
           </CardHeader>
         </Card>
       )}
+
+      {/* Export Button, Share Button, Bookmark Button, and Query Explanation */}
+      {safeResponse.data && safeResponse.data.length > 0 && (
+        <div className="flex justify-between items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <QueryExplanation
+              sql={safeResponse.sql || safeResponse.preview_sql || ''}
+              query={safeResponse.reasoning || ''}
+              reasoning={safeResponse.reasoning || ''}
+            />
+            {query && <BookmarkButton query={query} response={safeResponse} />}
+          </div>
+          <div className="flex items-center gap-2">
+            <ShareButton response={safeResponse} query={query} chatId={chatId} />
+            <ExportButton
+              data={safeResponse.data}
+              columns={safeResponse.columns}
+              chartElementRef={chartElementRef}
+              query={safeResponse.reasoning || ''}
+              reasoning={safeResponse.reasoning || ''}
+              sql={safeResponse.sql || safeResponse.preview_sql || ''}
+              filename="query-results"
+            />
+          </div>
+        </div>
+      )}
+
       <Tabs defaultValue="reasoning" className="w-full">
-        <TabsList className="neumorphic-card grid w-full grid-cols-4 p-1 gap-1">
+        <TabsList className="neumorphic-card grid w-full grid-cols-5 p-1 gap-1" style={{ display: 'grid' }}>
           <TabsTrigger 
             value="reasoning" 
             className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
@@ -115,7 +179,7 @@ export function ResultsPanel({ response, isLoading }: ResultsPanelProps) {
             value="data" 
             className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
           >
-            Data {response.data && response.data.length > 0 && `(${response.data.length})`}
+            Data {safeResponse.data && safeResponse.data.length > 0 && `(${safeResponse.data.length})`}
           </TabsTrigger>
           <TabsTrigger 
             value="chart" 
@@ -123,25 +187,39 @@ export function ResultsPanel({ response, isLoading }: ResultsPanelProps) {
           >
             Chart
           </TabsTrigger>
+          <TabsTrigger 
+            value="insights" 
+            className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            Insights
+          </TabsTrigger>
         </TabsList>
         <TabsContent value="reasoning" className="mt-4 animate-in fade-in-50 duration-300">
-          <ReasoningPanel reasoning={response.reasoning || 'No reasoning available.'} metricsInfo={response.metricsInfo} />
+          <ReasoningPanel reasoning={safeResponse.reasoning || 'No reasoning available.'} metricsInfo={safeResponse.metricsInfo} />
         </TabsContent>
         <TabsContent value="sql" className="mt-4 animate-in fade-in-50 duration-300">
           <SqlPanel 
-            sql={response.sql} 
-            preview_sql={response.preview_sql} 
-            action_sql={response.action_sql} 
+            sql={safeResponse.sql} 
+            preview_sql={safeResponse.preview_sql} 
+            action_sql={safeResponse.action_sql} 
           />
         </TabsContent>
         <TabsContent value="data" className="mt-4 animate-in fade-in-50 duration-300">
-          <DataTable data={response.data || []} columns={response.columns || []} />
+          <DataTable data={safeResponse.data || []} columns={safeResponse.columns || []} />
         </TabsContent>
         <TabsContent value="chart" className="mt-4 animate-in fade-in-50 duration-300">
-          <ChartPanel 
-            data={response.data || []} 
-            chartSpec={response.chartSpec || { type: 'table', xField: null, yField: null }} 
-            columns={response.columns || []} 
+          <div ref={chartElementRef}>
+            <ChartPanel 
+              data={safeResponse.data || []} 
+              chartSpec={safeResponse.chartSpec || { type: 'table', xField: null, yField: null }} 
+              columns={safeResponse.columns || []} 
+            />
+          </div>
+        </TabsContent>
+        <TabsContent value="insights" className="mt-4 animate-in fade-in-50 duration-300">
+          <DataInsightsPanel 
+            data={safeResponse.data || []} 
+            columns={safeResponse.columns || []} 
           />
         </TabsContent>
       </Tabs>

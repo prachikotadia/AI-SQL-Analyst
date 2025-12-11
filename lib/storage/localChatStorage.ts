@@ -42,7 +42,6 @@ export function getStoredChats(): StoredChat[] {
     const chats: StoredChat[] = JSON.parse(stored)
     return chats.filter(c => c && c.chatId)
   } catch (error) {
-    console.error('Error reading stored chats:', error)
     return []
   }
 }
@@ -81,7 +80,6 @@ export function saveChatToStorage(chat: StoredChat): boolean {
     localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(chats))
     return true
   } catch (error) {
-    console.error('Error saving chat to storage:', error)
     // If quota exceeded, try to clean up old chats
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       const chats = getStoredChats()
@@ -94,7 +92,6 @@ export function saveChatToStorage(chat: StoredChat): boolean {
         // Try saving again
         return saveChatToStorage(chat)
       } catch (retryError) {
-        console.error('Failed to save after cleanup:', retryError)
         return false
       }
     }
@@ -122,7 +119,6 @@ export function removeChatFromStorage(chatId: string): boolean {
     localStorage.setItem(CHATS_STORAGE_KEY, JSON.stringify(filtered))
     return true
   } catch (error) {
-    console.error('Error removing chat from storage:', error)
     return false
   }
 }
@@ -182,7 +178,6 @@ export function updateChatInStorage(chatId: string, updates: Partial<StoredChat>
     }
     return false
   } catch (error) {
-    console.error('Error updating chat in storage:', error)
     return false
   }
 }
@@ -196,6 +191,12 @@ export function addMessageToStoredChat(chatId: string, message: ChatMessage): bo
   try {
     const chat = getChatFromStorage(chatId)
     if (chat) {
+      // Check if message already exists (avoid duplicates)
+      const messageExists = chat.messages.some(m => m.id === message.id)
+      if (messageExists) {
+        return true
+      }
+      
       const updatedMessages = [...chat.messages, {
         id: message.id,
         timestamp: message.timestamp.toISOString(),
@@ -204,12 +205,19 @@ export function addMessageToStoredChat(chatId: string, message: ChatMessage): bo
         summary: message.summary,
       }]
       
-      return updateChatInStorage(chatId, {
+      // Sort by timestamp to ensure correct order
+      updatedMessages.sort((a, b) => 
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      )
+      
+      const success = updateChatInStorage(chatId, {
         messages: updatedMessages,
         title: chat.messages.length === 0 ? (message.queryText.length > 50 
           ? message.queryText.substring(0, 50) + '...' 
           : message.queryText) : chat.title,
       })
+      
+      return success
     } else {
       // Create new chat with this message
       const newChat: StoredChat = {
@@ -231,7 +239,6 @@ export function addMessageToStoredChat(chatId: string, message: ChatMessage): bo
       return saveChatToStorage(newChat)
     }
   } catch (error) {
-    console.error('Error adding message to stored chat:', error)
     return false
   }
 }

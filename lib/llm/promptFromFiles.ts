@@ -1,9 +1,13 @@
 /**
  * Build LLM prompt for per-chat file-based queries
- * Files are attached to the chat and persist across multiple queries
+ * 
+ * Files are attached to the chat and persist across multiple queries. This generates a detailed
+ * prompt that includes the schema from uploaded files, example queries, and strict rules for
+ * SQL generation. If files aren't found on disk (serverless reset), it recovers them from chatStore.
  */
 
 import { getFilesByIds, type FileMetadata } from '@/lib/data/fileRegistry'
+import { getChat, getChatFiles } from '@/lib/data/chatStore'
 
 /**
  * Build example queries based on actual schema
@@ -48,7 +52,12 @@ function buildExampleQueries(file: FileMetadata | undefined): string {
     examples.push(`\nNUMERIC QUERIES:`)
     examples.push(`- "Show ${firstTextCol} where ${firstNumCol} > 100" → SELECT * FROM ${tableName} WHERE "${firstNumCol}" > 100`)
     examples.push(`- "Find ${firstTextCol} with ${firstNumCol} between 50 and 100" → SELECT * FROM ${tableName} WHERE "${firstNumCol}" BETWEEN 50 AND 100`)
-    examples.push(`- "Top 10 ${firstTextCol} by ${firstNumCol}" → SELECT * FROM ${tableName} ORDER BY "${firstNumCol}" DESC LIMIT 10`)
+    examples.push(`- "Top 10 ${firstTextCol} by ${firstNumCol}" → SELECT * FROM ${tableName} ORDER BY CAST("${firstNumCol}" AS DOUBLE PRECISION) DESC LIMIT 10`)
+    examples.push(`- "Top ${firstTextCol} by ${firstNumCol}" → SELECT * FROM ${tableName} ORDER BY CAST("${firstNumCol}" AS DOUBLE PRECISION) DESC LIMIT 10`)
+    examples.push(`- "Highest ${firstNumCol}" → SELECT * FROM ${tableName} ORDER BY CAST("${firstNumCol}" AS DOUBLE PRECISION) DESC LIMIT 10`)
+    examples.push(`- "Lowest ${firstNumCol}" → SELECT * FROM ${tableName} ORDER BY CAST("${firstNumCol}" AS DOUBLE PRECISION) ASC LIMIT 10`)
+    examples.push(`- "5 cheapest ${firstTextCol}" → SELECT * FROM ${tableName} ORDER BY CAST("${firstNumCol}" AS DOUBLE PRECISION) ASC LIMIT 5`)
+    examples.push(`- "Bottom 20 ${firstTextCol} by ${firstNumCol}" → SELECT * FROM ${tableName} ORDER BY CAST("${firstNumCol}" AS DOUBLE PRECISION) ASC LIMIT 20`)
   }
   
   // Aggregation queries
@@ -68,6 +77,14 @@ function buildExampleQueries(file: FileMetadata | undefined): string {
     examples.push(`- "Count ${firstTextCol} per ${secondTextCol}" → SELECT "${secondTextCol}", COUNT(*) AS count FROM ${tableName} GROUP BY "${secondTextCol}"`)
     examples.push(`- "Total ${firstNumCol} by ${secondTextCol}" → SELECT "${secondTextCol}", SUM("${firstNumCol}") AS total FROM ${tableName} GROUP BY "${secondTextCol}"`)
     examples.push(`- "Average ${firstNumCol} for each ${secondTextCol}" → SELECT "${secondTextCol}", AVG("${firstNumCol}") AS avg_value FROM ${tableName} GROUP BY "${secondTextCol}"`)
+    examples.push(`- "Average ${firstNumCol} per ${secondTextCol} where count > 10" → SELECT "${secondTextCol}", AVG("${firstNumCol}") AS avg_value, COUNT(*) AS count FROM ${tableName} GROUP BY "${secondTextCol}" HAVING COUNT(*) > 10`)
+  }
+  
+  // Subquery examples
+  if (firstTextCol && secondTextCol && firstNumCol) {
+    examples.push(`\nSUBQUERIES:`)
+    examples.push(`- "${firstTextCol} where ${firstNumCol} > average ${firstNumCol} for ${secondTextCol}" → SELECT * FROM ${tableName} WHERE "${firstNumCol}" > (SELECT AVG("${firstNumCol}") FROM ${tableName} AS t2 WHERE t2."${secondTextCol}" = ${tableName}."${secondTextCol}")`)
+    examples.push(`- "Top 5 ${firstTextCol} in each ${secondTextCol} by ${firstNumCol}" → SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY "${secondTextCol}" ORDER BY "${firstNumCol}" DESC) AS rn FROM ${tableName}) WHERE rn <= 5`)
   }
   
   // Date queries
@@ -80,8 +97,9 @@ function buildExampleQueries(file: FileMetadata | undefined): string {
   // Complex queries
   if (firstTextCol && firstNumCol && secondTextCol) {
     examples.push(`\nCOMPLEX QUERIES:`)
-    examples.push(`- "Top 5 ${secondTextCol} by total ${firstNumCol}" → SELECT "${secondTextCol}", SUM("${firstNumCol}") AS total FROM ${tableName} GROUP BY "${secondTextCol}" ORDER BY total DESC LIMIT 5`)
+    examples.push(`- "Top 5 ${secondTextCol} by total ${firstNumCol}" → SELECT "${secondTextCol}", SUM("${firstNumCol}") AS total FROM ${tableName} GROUP BY "${secondTextCol}" ORDER BY CAST(total AS DOUBLE PRECISION) DESC LIMIT 5`)
     examples.push(`- "Show ${firstTextCol} where ${secondTextCol} is X and ${firstNumCol} > Y" → SELECT * FROM ${tableName} WHERE "${secondTextCol}" = 'X' AND "${firstNumCol}" > Y`)
+    examples.push(`- "Top 10 most expensive ${firstTextCol} in ${secondTextCol}" → SELECT * FROM ${tableName} WHERE "${secondTextCol}" = 'X' ORDER BY CAST("${firstNumCol}" AS DOUBLE PRECISION) DESC LIMIT 10`)
   }
 
   return examples.join('\n')
@@ -90,9 +108,75 @@ function buildExampleQueries(file: FileMetadata | undefined): string {
 export function buildPromptFromFiles(
   userQuery: string,
   fileIds: string[],
-  timeRange?: string
+  timeRange?: string,
+  chatId?: string
 ): string {
-  const files = getFilesByIds(fileIds)
+  let files = getFilesByIds(fileIds)
+  
+  // CRITICAL: If disk storage is empty but we have fileIds, try to recover from chatStore
+  // This should rarely happen since files are now saved to disk, but it's a safety net
+  if (files.length === 0 && fileIds.length > 0 && chatId) {
+    try {
+      const chat = getChat(chatId)
+      if (chat) {
+        const chatFiles = getChatFiles(chat.chatId)
+        const matchingFiles = chatFiles.filter(f => fileIds.includes(f.id))
+        if (matchingFiles.length > 0) {
+          files = matchingFiles
+          
+          // Re-save to disk so they persist
+          try {
+            const { reRegisterFile } = require('@/lib/data/fileRegistry')
+            for (const file of matchingFiles) {
+              reRegisterFile(file)
+            }
+          } catch (regError) {
+            // Could not re-save files to disk, continue with chatStore files
+          }
+        } else if (chatFiles.length > 0) {
+          // Fallback: use all chat files if IDs don't match
+          files = chatFiles
+          
+          // Re-save to disk
+          try {
+            const { reRegisterFile } = require('@/lib/data/fileRegistry')
+            for (const file of chatFiles) {
+              reRegisterFile(file)
+            }
+          } catch (regError) {
+            // Could not re-save files to disk, continue with chatStore files
+          }
+        }
+      }
+    } catch (error) {
+      // Failed to recover files from chatStore
+    }
+  }
+  
+  // CRITICAL: If still no files but chatId exists, try to get ANY files from chatStore
+  if (files.length === 0 && chatId) {
+    try {
+      const chat = getChat(chatId)
+      if (chat) {
+        const chatFiles = getChatFiles(chat.chatId)
+        if (chatFiles.length > 0) {
+          files = chatFiles
+          
+          // Re-save to disk
+          try {
+            const { reRegisterFile } = require('@/lib/data/fileRegistry')
+            for (const file of chatFiles) {
+              reRegisterFile(file)
+            }
+          } catch (regError) {
+            // Could not re-save files to disk, continue with chatStore files
+          }
+        }
+      }
+    } catch (error) {
+      // Final recovery attempt failed
+    }
+  }
   
   if (files.length === 0) {
     return `You are an AI SQL Analyst. The user has not attached any files to this chat yet. Please respond with:
@@ -192,7 +276,19 @@ export function buildPromptFromFiles(
   // Build comprehensive examples based on actual schema
   const exampleQueries = buildExampleQueries(files[0])
   
-  return `You are an advanced AI SQL Analyst. Your job is to understand ANY natural language question and convert it to accurate SQL.
+  return `SYSTEM ROLE: YOU ARE A STRICT SQL GENERATOR FOR AN IN-MEMORY ANALYTICS ENGINE
+
+You NEVER return random results. You ALWAYS generate deterministic, correct SQL that the backend can execute directly on an in-memory table.
+
+You have ONE JOB:
+Given:
+- a table name
+- a list of column names and types
+- a natural language query
+
+You must return a SINGLE, SAFE, VALID SQL SELECT statement plus a short reasoning string in JSON.
+
+You MUST obey all rules below EXACTLY. Do not be "creative". Do not ignore any rule.
 
 SCHEMA (ONLY SOURCE OF TRUTH):
 ${schemaDescription}${coordinateInstructions}
@@ -255,13 +351,17 @@ CORE PRINCIPLES
    - "ends with" → WHERE column LIKE '%value'
    - "between X and Y" → WHERE column BETWEEN X AND Y
 
-6. SORTING INTELLIGENCE:
-   - "top N" → ORDER BY column DESC LIMIT N
-   - "bottom N" → ORDER BY column ASC LIMIT N
-   - "highest" → ORDER BY column DESC
-   - "lowest" → ORDER BY column ASC
-   - "alphabetically" → ORDER BY column ASC
-   - "reverse" → ORDER BY column DESC
+6. SORTING INTELLIGENCE (CRITICAL FOR TOP/BOTTOM QUERIES):
+   - "top N" → ORDER BY CAST(column AS DOUBLE PRECISION) DESC LIMIT N
+   - "bottom N" → ORDER BY CAST(column AS DOUBLE PRECISION) ASC LIMIT N
+   - "highest" → ORDER BY CAST(column AS DOUBLE PRECISION) DESC LIMIT 10 (if no N specified)
+   - "lowest" → ORDER BY CAST(column AS DOUBLE PRECISION) ASC LIMIT 10 (if no N specified)
+   - "largest" → ORDER BY CAST(column AS DOUBLE PRECISION) DESC LIMIT 10 (if no N specified)
+   - "smallest" → ORDER BY CAST(column AS DOUBLE PRECISION) ASC LIMIT 10 (if no N specified)
+   - "alphabetically" → ORDER BY column ASC (text columns, no CAST needed)
+   - "reverse" → ORDER BY column DESC (text columns, no CAST needed)
+   
+   CRITICAL: Always use CAST(...AS DOUBLE PRECISION) for numeric columns to ensure numeric sorting, not lexicographic sorting.
 
 7. COMPLEX QUERIES:
    - Multiple conditions: Use AND/OR appropriately
@@ -310,11 +410,80 @@ COMPARISON QUERIES:
 - "X vs Y" → SELECT "X", "Y" FROM table
 - "Difference between X and Y" → SELECT "X", "Y", ("X" - "Y") AS difference FROM table
 
-TOP/BOTTOM QUERIES:
-- "Top 10 X" → SELECT * FROM table ORDER BY "X" DESC LIMIT 10
-- "Bottom 5 X" → SELECT * FROM table ORDER BY "X" ASC LIMIT 5
-- "Highest X" → SELECT * FROM table ORDER BY "X" DESC LIMIT 1
-- "Lowest X" → SELECT * FROM table ORDER BY "X" ASC LIMIT 1
+TOP/BOTTOM QUERIES (CRITICAL - FOLLOW EXACTLY):
+====================================================
+When the user asks queries related to "top", "highest", "lowest", "top N", "bottom N", "largest", or "smallest", you MUST follow these exact rules:
+
+1. INTERPRET "TOP" CORRECTLY:
+   - "Top items" = highest values, sorted DESC, then LIMIT N
+   - "Bottom items" = lowest values, sorted ASC, then LIMIT N
+   - "Highest" = ORDER BY column DESC
+   - "Lowest" = ORDER BY column ASC
+   - "Largest" = ORDER BY column DESC
+   - "Smallest" = ORDER BY column ASC
+
+   Examples:
+   - "Top 10 items by price" → ORDER BY "Price" DESC LIMIT 10
+   - "Top 5 most expensive" → ORDER BY "Price" DESC LIMIT 5
+   - "Cheapest 20 products" → ORDER BY "Price" ASC LIMIT 20
+   - "Highest priced items" → ORDER BY "Price" DESC LIMIT 10 (assume 10 if no number)
+   - "Lowest cost items" → ORDER BY "Cost" ASC LIMIT 10 (assume 10 if no number)
+
+2. ALWAYS SORT NUMERICALLY, NEVER LEXICOGRAPHICALLY:
+   - Before generating SQL, ensure the column is numeric
+   - If the column is numeric, sorting MUST be based on numeric value
+   - If needed, cast safely: ORDER BY CAST("Price" AS DOUBLE PRECISION) DESC
+   - NEVER sort numeric columns as strings (this causes "10" < "2" errors)
+
+3. ALWAYS INCLUDE LIMIT N:
+   - If the user says "top items" without giving a number → assume LIMIT 10
+   - Examples:
+     - "Show top items by price" → LIMIT 10
+     - "Top products" → LIMIT 10
+     - "Top 5 items" → LIMIT 5
+     - "Top 20" → LIMIT 20
+
+4. NEVER HALLUCINATE COLUMN NAMES:
+   - Use ONLY column names provided in the schema
+   - If the relevant column does not exist → return error in reasoning:
+     "Cannot answer: Column 'Price' not found in the selected file. Available columns: [list]"
+   - Do NOT attempt to guess or create new columns
+
+5. NEVER GUESS THE SORT COLUMN:
+   - If the user asks "top N items" but doesn't say by what → respond:
+     "Missing sort column. The user must specify 'Top N items by <column>'."
+   - Example: "Top 10" without "by X" → return error in reasoning
+
+6. STRICT SQL OUTPUT FORMAT:
+   You must ALWAYS return SQL in this exact format:
+   {
+     "sql": "SELECT * FROM <table> ORDER BY CAST(\"<column>\" AS DOUBLE PRECISION) <ASC|DESC> LIMIT <number>;",
+     "reasoning": "Explain EXACTLY how you interpreted 'top' or 'bottom' and why sorting direction was chosen."
+   }
+
+7. EXAMPLES YOU MUST FOLLOW:
+   Example A — User: "Show me the top 10 items by price"
+   {
+     "sql": "SELECT * FROM products ORDER BY CAST(\"Price\" AS DOUBLE PRECISION) DESC LIMIT 10;",
+     "reasoning": "User wants top 10 items by price. 'Top' means highest values, so ORDER BY DESC. Using CAST to ensure numeric sorting. LIMIT 10 as specified."
+   }
+
+   Example B — User: "Show highest priced items"
+   {
+     "sql": "SELECT * FROM products ORDER BY CAST(\"Price\" AS DOUBLE PRECISION) DESC LIMIT 10;",
+     "reasoning": "User wants highest priced items. 'Highest' means DESC order. No number specified, so assuming LIMIT 10. Using CAST for numeric sorting."
+   }
+
+   Example C — User: "Show me the 5 cheapest items"
+   {
+     "sql": "SELECT * FROM products ORDER BY CAST(\"Price\" AS DOUBLE PRECISION) ASC LIMIT 5;",
+     "reasoning": "User wants 5 cheapest items. 'Cheapest' means lowest values, so ORDER BY ASC. LIMIT 5 as specified. Using CAST for numeric sorting."
+   }
+
+8. ERROR HANDLING:
+   - If column doesn't exist: Return error in reasoning, sql = "not_available"
+   - If sort column not specified: Return error in reasoning, sql = "not_available"
+   - NEVER guess or invent columns
 
 ====================================================
 CRITICAL RULES

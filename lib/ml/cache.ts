@@ -1,7 +1,9 @@
+import type { ChartSpec } from '@/types'
+
 interface CacheEntry {
   sql: string
   reasoning: string
-  chartSpec: any
+  chartSpec: ChartSpec
   metricName?: string
   timestamp: Date
 }
