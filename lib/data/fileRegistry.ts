@@ -38,7 +38,7 @@ function getUploadsDir(): string {
   // Create directory if it doesn't exist (server-side only)
   if (typeof window === 'undefined' && !existsSync(uploadsDir)) {
     try {
-      mkdirSync(uploadsDir, { recursive: true })
+    mkdirSync(uploadsDir, { recursive: true })
     } catch (error) {
       // If we can't create uploads dir, fall back to /tmp
       return '/tmp'
@@ -79,15 +79,15 @@ function saveFileToDisk(fileId: string, fileMetadata: FileMetadata): void {
   if (typeof window !== 'undefined') {
     return
   }
-  
-  // Convert Date to ISO string for JSON serialization
-  const serializableMetadata = {
-    ...fileMetadata,
-    uploadedAt: fileMetadata.uploadedAt instanceof Date 
-      ? fileMetadata.uploadedAt.toISOString() 
-      : fileMetadata.uploadedAt,
-  }
-  
+    
+    // Convert Date to ISO string for JSON serialization
+    const serializableMetadata = {
+      ...fileMetadata,
+      uploadedAt: fileMetadata.uploadedAt instanceof Date 
+        ? fileMetadata.uploadedAt.toISOString() 
+        : fileMetadata.uploadedAt,
+    }
+    
   // Always store in-memory as fallback
   inMemoryStore.set(fileId, fileMetadata)
   

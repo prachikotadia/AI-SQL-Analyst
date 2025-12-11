@@ -55,7 +55,7 @@ export async function executeSqlSafe(sql: string, params: unknown[] = []): Promi
     let result
     try {
       result = await Promise.race([
-        pool.query(cleanSql, params),
+      pool.query(cleanSql, params),
         timeoutPromise,
       ])
       
@@ -160,7 +160,7 @@ export async function executeSqlPrisma(sql: string): Promise<ExecutionResult> {
     let result: unknown[]
     try {
       result = await Promise.race([
-        prisma.$queryRawUnsafe(cleanSql),
+      prisma.$queryRawUnsafe(cleanSql),
         timeoutPromise,
       ]) as unknown[]
       

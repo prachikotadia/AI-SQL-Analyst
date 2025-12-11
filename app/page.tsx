@@ -8,6 +8,7 @@ import { HistorySidebar } from '@/components/HistorySidebar'
 import { LayoutShell } from '@/components/LayoutShell'
 import { OutOfScopeModal } from '@/components/OutOfScopeModal'
 import { CommandPalette } from '@/components/CommandPalette'
+import { ApiKeyErrorModal } from '@/components/ApiKeyErrorModal'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -41,6 +42,7 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chats, setChats] = useState<ChatInfo[]>([])
   const [outOfScopeModal, setOutOfScopeModal] = useState<{ open: boolean; message: string }>({ open: false, message: '' })
+  const [apiKeyErrorModalOpen, setApiKeyErrorModalOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const resultsRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
@@ -538,6 +540,20 @@ export default function Home() {
         return
       }
 
+      // Check for API key error and show friendly modal
+      const isApiKeyError = normalizedResponse.error?.message?.includes('API key') ||
+        normalizedResponse.error?.message?.includes('API access forbidden') ||
+        normalizedResponse.error?.message?.includes('OPENAI_API_KEY') ||
+        normalizedResponse.error?.message?.includes('401') ||
+        normalizedResponse.error?.message?.includes('403') ||
+        normalizedResponse.reasoning?.includes('API access forbidden') ||
+        normalizedResponse.reasoning?.includes('OPENAI_API_KEY') ||
+        normalizedResponse.reasoning?.includes('Please check your OPENAI_API_KEY')
+      
+      if (isApiKeyError) {
+        setApiKeyErrorModalOpen(true)
+      }
+      
       // Check for out-of-scope error and show modal
       if (normalizedResponse.error?.type === 'out_of_scope') {
         setOutOfScopeModal({
@@ -659,7 +675,8 @@ export default function Home() {
       }, 100)
       timeoutRefs.current.add(scrollTimeout)
 
-      if (normalizedResponse.error && normalizedResponse.error.type !== 'no_files') {
+      // Don't show toast for API key errors - modal handles it
+      if (normalizedResponse.error && normalizedResponse.error.type !== 'no_files' && !isApiKeyError) {
         toast({
           title: 'Error',
           description: normalizedResponse.error.message,
@@ -674,25 +691,40 @@ export default function Home() {
     } catch (error: any) {
       // CRITICAL: Never reset chatFiles or currentChatId on error
       // Files persist across errors - user can retry query
+      const errorMessage = error.message || 'Failed to execute query. Please try again.'
+      
+      // Check if this is an API key error
+      const isApiKeyError = errorMessage.includes('API key') ||
+        errorMessage.includes('API access forbidden') ||
+        errorMessage.includes('OPENAI_API_KEY') ||
+        errorMessage.includes('401') ||
+        errorMessage.includes('403')
+      
       const errorResponse: QueryResponse = {
         data: [],
         columns: [],
-        reasoning: error.message || 'Failed to execute query. Please try again.',
+        reasoning: errorMessage,
         preview_sql: null,
         action_sql: null,
         sql: '',
         chartSpec: { type: 'table', xField: '', yField: '' },
         error: {
-          message: error.message || 'Failed to execute query',
+          message: errorMessage,
           type: 'unknown',
         },
       }
       setResponse(errorResponse)
-      toast({
-        title: 'Error',
-        description: error.message || 'Failed to execute query. Please try again.',
-        variant: 'destructive',
-      })
+      
+      // Show API key modal instead of toast for API key errors
+      if (isApiKeyError) {
+        setApiKeyErrorModalOpen(true)
+      } else {
+        toast({
+          title: 'Error',
+          description: errorMessage,
+          variant: 'destructive',
+        })
+      }
       
       // CRITICAL: Preserve chatFiles and chatId - do NOT reset them
       // User can retry the query with the same files
@@ -960,7 +992,12 @@ export default function Home() {
         onOpenChange={(open) => setOutOfScopeModal({ ...outOfScopeModal, open })}
         message={outOfScopeModal.message}
       />
-      
+
+      <ApiKeyErrorModal
+        open={apiKeyErrorModalOpen}
+        onOpenChange={setApiKeyErrorModalOpen}
+      />
+
       <CommandPalette
         open={commandPaletteOpen}
         onOpenChange={setCommandPaletteOpen}

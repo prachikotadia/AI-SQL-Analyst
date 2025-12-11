@@ -331,7 +331,7 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
     }
     
     if (typeof value === 'string') {
-      return value
+    return value
     }
     
     if (typeof value === 'boolean') {

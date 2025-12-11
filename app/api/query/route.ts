@@ -273,25 +273,46 @@ export async function POST(request: NextRequest) {
         if (!prompt || prompt.trim().length === 0) {
           throw new Error('Generated prompt is empty')
         }
-      } catch (promptError: unknown) {
-        const errorMessage = promptError instanceof Error ? promptError.message : 'Unknown error'
-        throw new Error(`Failed to build prompt: ${errorMessage}`)
+      } catch (promptError: any) {
+        throw new Error(`Failed to build prompt: ${promptError.message}`)
       }
       
-      // Load LLM configuration with validation
-      const { createOpenAIConfig, loadLLMConfig } = await import('@/lib/llm/env')
-      const llmConfig = loadLLMConfig()
-      const openAIConfig = createOpenAIConfig()
+      let baseURL = process.env.OPENAI_BASE_URL || 'https://openrouter.ai/api/v1'
+      const apiKey = process.env.OPENAI_API_KEY || 'lm-studio'
       
-      // Check if using LM Studio (localhost/127.0.0.1)
-      const isLMStudio = llmConfig.baseURL.includes('localhost') || 
-                         llmConfig.baseURL.includes('127.0.0.1') || 
-                         llmConfig.baseURL.includes('1234')
+      // Fix incorrect base URLs
+      if (baseURL.includes('platform.openai.com')) {
+        if (apiKey && apiKey.startsWith('sk-')) {
+          baseURL = 'https://api.openai.com/v1'
+        } else {
+          baseURL = 'https://openrouter.ai/api/v1'
+        }
+      }
       
-      const openai = new OpenAI(openAIConfig)
+      const isLMStudio = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
+      const isOpenAI = baseURL.includes('api.openai.com')
+      
+      if (!isLMStudio && (!apiKey || apiKey === 'lm-studio')) {
+        throw new Error('OpenRouter API key is required. Please set OPENAI_API_KEY environment variable.')
+      }
+      
+      let modelName = process.env.OPENAI_MODEL || 'openai/gpt-4o-mini'
+      if (isOpenAI) {
+        if (modelName.startsWith('openai/')) {
+          modelName = modelName.replace('openai/', '')
+        }
+        if (!process.env.OPENAI_MODEL) {
+          modelName = 'gpt-4o-mini'
+        }
+      }
+      
+      const openai = new OpenAI({
+        apiKey: apiKey,
+        baseURL: baseURL,
+      })
       
       const requestOptions: any = {
-        model: llmConfig.model,
+        model: modelName,
         messages: [
           {
             role: 'system',
@@ -508,9 +529,9 @@ Always respond with valid JSON only, no markdown, no code blocks, no explanation
       } catch (llmError: any) {
         
         if (llmError.status === 401) {
-          throw new Error('Invalid API key. Please check your OPENAI_API_KEY environment variable in Netlify dashboard. See NETLIFY_SETUP.md for setup instructions.')
+          throw new Error('Invalid API key. Please check your OPENAI_API_KEY environment variable.')
         } else if (llmError.status === 403) {
-          throw new Error('API access forbidden. Please check your OPENAI_API_KEY in Netlify dashboard (Site settings → Environment variables). Ensure the key is valid and has correct permissions. See NETLIFY_SETUP.md for setup instructions.')
+          throw new Error('API access forbidden. Please check your OPENAI_API_KEY and ensure it has the correct permissions.')
         } else if (llmError.status === 429) {
           const waitTimeMatch = llmError.message?.match(/try again in ([\dhm.]+)/i)
           const waitTime = waitTimeMatch ? waitTimeMatch[1] : 'a few minutes'
