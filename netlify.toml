@@ -9,11 +9,5 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Redirects for Next.js App Router
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
 # Note: File storage in /uploads won't persist on Netlify (serverless)
 # Consider using external storage (S3, etc.) for production
