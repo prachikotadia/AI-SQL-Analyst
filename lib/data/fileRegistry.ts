@@ -58,7 +58,7 @@ function getFilePath(fileId: string): string {
  * Returns the file ID
  */
 export function registerFile(metadata: Omit<FileMetadata, 'id'>): string {
-  const id = `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  const id = `file_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
   
   const fileMetadata: FileMetadata = {
     ...metadata,
