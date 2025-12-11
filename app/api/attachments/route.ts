@@ -85,7 +85,7 @@ async function parseFileBuffer(
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   return new Promise<NextResponse>((resolve) => {
-    const form = formidable({
+    const form = new IncomingForm({
       multiples: false,
       uploadDir: tmpdir(),
       keepExtensions: true,
