@@ -184,6 +184,7 @@ export async function POST(request: NextRequest) {
       action_sql: null,
       sql: actualSql,
       chartSpec,
+      error: null,
       performanceMetrics: {
         executionTimeMs: executionTime,
         tokenUsage: 0, // No tokens used in demo mode
