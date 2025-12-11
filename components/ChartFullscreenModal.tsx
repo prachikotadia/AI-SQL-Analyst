@@ -369,7 +369,7 @@ export function ChartFullscreenModal({
               >
                 <ZoomOut className="h-4 w-4" />
               </Button>
-              <span className="text-sm text-muted-foreground min-w-[60px] text-center">
+              <span className="text-xs sm:text-sm text-muted-foreground min-w-[50px] sm:min-w-[60px] text-center">
                 {Math.round(zoomLevel * 100)}%
               </span>
               <Button
@@ -378,6 +378,7 @@ export function ChartFullscreenModal({
                 onClick={handleZoomIn}
                 disabled={zoomLevel >= 3}
                 title="Zoom In"
+                className="min-h-[44px] text-xs sm:text-sm"
               >
                 <ZoomIn className="h-4 w-4" />
               </Button>
@@ -386,6 +387,7 @@ export function ChartFullscreenModal({
                 size="sm"
                 onClick={handleReset}
                 title="Reset View"
+                className="min-h-[44px] text-xs sm:text-sm"
               >
                 <RotateCcw className="h-4 w-4" />
               </Button>
