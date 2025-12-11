@@ -293,7 +293,7 @@ export async function POST(request: NextRequest) {
       const isOpenAI = baseURL.includes('api.openai.com')
       
       if (!isLMStudio && (!apiKey || apiKey === 'lm-studio')) {
-        throw new Error('OpenRouter API key is required. Please set OPENAI_API_KEY environment variable.')
+        throw new Error('OpenRouter API key is required. Please set OPENAI_API_KEY environment variable in Netlify dashboard (Site settings → Environment variables). See NETLIFY_SETUP.md for instructions.')
       }
       
       let modelName = process.env.OPENAI_MODEL || 'openai/gpt-4o-mini'
@@ -529,9 +529,9 @@ Always respond with valid JSON only, no markdown, no code blocks, no explanation
       } catch (llmError: any) {
         
         if (llmError.status === 401) {
-          throw new Error('Invalid API key. Please check your OPENAI_API_KEY environment variable.')
+          throw new Error('Invalid API key. Please check your OPENAI_API_KEY environment variable in Netlify dashboard. See NETLIFY_SETUP.md for setup instructions.')
         } else if (llmError.status === 403) {
-          throw new Error('API access forbidden. Please check your OPENAI_API_KEY and ensure it has the correct permissions.')
+          throw new Error('API access forbidden. Please check your OPENAI_API_KEY in Netlify dashboard (Site settings → Environment variables). Ensure the key is valid and has correct permissions. See NETLIFY_SETUP.md for setup instructions.')
         } else if (llmError.status === 429) {
           const waitTimeMatch = llmError.message?.match(/try again in ([\dhm.]+)/i)
           const waitTime = waitTimeMatch ? waitTimeMatch[1] : 'a few minutes'
