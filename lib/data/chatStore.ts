@@ -60,9 +60,16 @@ export function getChat(chatId: string): Chat | null {
  * Get all chats (sorted by updatedAt, newest first)
  */
 export function getAllChats(): Chat[] {
-  return Array.from(chats.values()).sort((a, b) => 
-    b.updatedAt.getTime() - a.updatedAt.getTime()
-  )
+  return Array.from(chats.values()).sort((a, b) => {
+    // Ensure updatedAt is a Date object
+    const aTime = a.updatedAt instanceof Date 
+      ? a.updatedAt.getTime() 
+      : new Date(a.updatedAt).getTime()
+    const bTime = b.updatedAt instanceof Date 
+      ? b.updatedAt.getTime() 
+      : new Date(b.updatedAt).getTime()
+    return bTime - aTime
+  })
 }
 
 /**
@@ -146,7 +153,7 @@ export function addMessageToChat(
     }
 
     const message: ChatMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
       timestamp: new Date(),
       queryText,
       response,
@@ -181,7 +188,11 @@ export function cleanupOldChats(): void {
   const maxAge = 7 * 24 * 60 * 60 * 1000 // 7 days
 
   for (const [chatId, chat] of chats.entries()) {
-    const age = now - chat.updatedAt.getTime()
+    // Ensure updatedAt is a Date object
+    const updatedAtTime = chat.updatedAt instanceof Date 
+      ? chat.updatedAt.getTime() 
+      : new Date(chat.updatedAt).getTime()
+    const age = now - updatedAtTime
     if (age > maxAge) {
       chats.delete(chatId)
     }

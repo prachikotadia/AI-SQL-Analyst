@@ -19,13 +19,25 @@ export async function GET(request: NextRequest) {
   try {
     const chats = getAllChats()
     return NextResponse.json({
-      chats: (chats || []).map(chat => ({
-        chatId: chat.chatId,
-        title: chat.title || 'New Chat',
-        updatedAt: chat.updatedAt || new Date().toISOString(),
-        messageCount: chat.messages?.length || 0,
-        fileCount: chat.attachedFiles?.length || 0,
-      })),
+      chats: (chats || []).map(chat => {
+        // Safely convert updatedAt to ISO string
+        let updatedAt: string
+        if (chat.updatedAt instanceof Date) {
+          updatedAt = chat.updatedAt.toISOString()
+        } else if (chat.updatedAt) {
+          updatedAt = new Date(chat.updatedAt).toISOString()
+        } else {
+          updatedAt = new Date().toISOString()
+        }
+        
+        return {
+          chatId: chat.chatId,
+          title: chat.title || 'New Chat',
+          updatedAt,
+          messageCount: chat.messages?.length || 0,
+          fileCount: chat.attachedFiles?.length || 0,
+        }
+      }),
     })
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to fetch chats'
