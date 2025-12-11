@@ -9,6 +9,7 @@ import { LayoutShell } from '@/components/LayoutShell'
 import { OutOfScopeModal } from '@/components/OutOfScopeModal'
 import { CommandPalette } from '@/components/CommandPalette'
 import { ApiKeyErrorModal } from '@/components/ApiKeyErrorModal'
+import { DemoQueries } from '@/components/DemoQueries'
 import { useToast } from '@/components/ui/use-toast'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -44,6 +45,8 @@ export default function Home() {
   const [outOfScopeModal, setOutOfScopeModal] = useState<{ open: boolean; message: string }>({ open: false, message: '' })
   const [apiKeyErrorModalOpen, setApiKeyErrorModalOpen] = useState(false)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
+  const [showDemoQueries, setShowDemoQueries] = useState(true)
+  const [sampleFileLoaded, setSampleFileLoaded] = useState(false)
   const resultsRef = useRef<HTMLDivElement>(null)
   const initializedRef = useRef(false)
   const timeoutRefs = useRef<Set<NodeJS.Timeout>>(new Set())
@@ -322,6 +325,89 @@ export default function Home() {
         console.warn('[Home] Failed to load all chats:', message)
       }
     })
+
+    // Auto-load sample file on first visit
+    const hasLoadedSample = localStorage.getItem('sample_file_loaded')
+    if (!hasLoadedSample && typeof window !== 'undefined') {
+      // Load sample file after chat is created
+      const loadSampleTimeout = setTimeout(async () => {
+        try {
+          // Wait for chat to be created
+          let chatIdToUse = currentChatId || getCurrentChatId() || localStorage.getItem('currentChatId')
+          if (!chatIdToUse) {
+            // Create chat first
+            try {
+              const res = await fetch('/api/chats', { method: 'POST' })
+              if (res.ok) {
+                const data = await res.json()
+                chatIdToUse = data.chatId
+                if (chatIdToUse) {
+                  setCurrentChatId(chatIdToUse)
+                  setCurrentChatIdInStorage(chatIdToUse)
+                }
+              }
+            } catch {
+              chatIdToUse = `chat_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
+              setCurrentChatId(chatIdToUse)
+              setCurrentChatIdInStorage(chatIdToUse)
+            }
+          }
+          
+          if (!chatIdToUse) {
+            return // Can't load sample without chat
+          }
+          
+          const sampleFileUrl = '/sample-data.csv'
+          const response = await fetch(sampleFileUrl)
+          if (response.ok) {
+            const blob = await response.blob()
+            const file = new File([blob], 'sample-data.csv', { type: 'text/csv' })
+            
+            // Create form data with chatId
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('chatId', chatIdToUse)
+            
+            // Upload file
+            const uploadRes = await fetch('/api/attachments', {
+              method: 'POST',
+              body: formData,
+            })
+            
+            if (uploadRes.ok) {
+              const uploadData = await uploadRes.json()
+              if (uploadData.fileId) {
+                // Update chat files state
+                const newFile = {
+                  id: uploadData.fileId,
+                  fileName: 'sample-data.csv',
+                  rowCount: uploadData.rowCount || 50,
+                }
+                setChatFiles(prev => {
+                  if (prev.some(f => f.id === uploadData.fileId)) {
+                    return prev
+                  }
+                  return [...prev, newFile]
+                })
+                
+                localStorage.setItem('sample_file_loaded', 'true')
+                setSampleFileLoaded(true)
+                toast({
+                  title: 'Sample data loaded!',
+                  description: 'Try the demo queries below to see how it works. No API key needed!',
+                })
+              }
+            }
+          }
+        } catch (error) {
+          // Failed to load sample file, continue anyway
+        }
+      }, 3000) // Wait 3 seconds for chat creation
+      
+      timeoutRefs.current.add(loadSampleTimeout)
+    } else {
+      setSampleFileLoaded(true)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -492,7 +578,23 @@ export default function Home() {
         }
       }
       
-      const res = await fetch('/api/query', {
+      // Check if this is a demo query (case-insensitive partial match)
+      const { getDemoQueryByQuery, DEMO_QUERIES } = await import('@/lib/utils/demoQueries')
+      let isDemoQuery = !!getDemoQueryByQuery(queryText.trim())
+      
+      // If exact match not found, try partial match
+      if (!isDemoQuery) {
+        const lowerQuery = queryText.trim().toLowerCase()
+        isDemoQuery = DEMO_QUERIES.some(q => 
+          lowerQuery.includes(q.query.toLowerCase()) || 
+          q.query.toLowerCase().includes(lowerQuery)
+        )
+      }
+      
+      // Use demo API if it's a demo query, otherwise use regular API
+      const apiEndpoint = isDemoQuery ? '/api/demo' : '/api/query'
+      
+      const res = await fetch(apiEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -501,6 +603,18 @@ export default function Home() {
           chatId: chatIdToUse || undefined,
         }),
       })
+      
+      // If demo query fails with no files, show helpful message
+      if (isDemoQuery && !res.ok && allFileIds.length === 0) {
+        toast({
+          title: 'Sample file needed',
+          description: 'Please wait for the sample file to load, or upload sample-data.csv manually.',
+          variant: 'destructive',
+        })
+        setIsLoading(false)
+        isQueryInProgressRef.current = false
+        return
+      }
 
       if (!res.ok) {
         const errorText = await res.text()
@@ -526,6 +640,12 @@ export default function Home() {
         metricsInfo: data.metricsInfo,
         queryCategory: data.queryCategory,
         error: data.error || null,
+        performanceMetrics: data.performanceMetrics,
+      }
+      
+      // Hide demo queries after first successful query
+      if (isDemoQuery && normalizedResponse.data && normalizedResponse.data.length > 0) {
+        setShowDemoQueries(false)
       }
       
       if (normalizedResponse.error && normalizedResponse.error.type === 'no_files') {
@@ -938,6 +1058,7 @@ export default function Home() {
               onNewQuery={() => {
                 // Clear the current response but keep chat history visible
                 setResponse(null)
+                setShowDemoQueries(true) // Show demo queries again
                 // Scroll to query input area
                 const focusTimeout = setTimeout(() => {
                   timeoutRefs.current.delete(focusTimeout)
@@ -949,6 +1070,40 @@ export default function Home() {
               }}
             />
           </div>
+
+          {/* Demo Queries - Show when no response and chat has no messages */}
+          {showDemoQueries && chatMessages.length === 0 && !response && !isLoading && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 mb-4 sm:mb-6">
+              <DemoQueries 
+                onSelectQuery={(queryText) => {
+                  setQuery(queryText)
+                  // Execute query after a short delay
+                  const executeTimeout = setTimeout(() => {
+                    timeoutRefs.current.delete(executeTimeout)
+                    handleQuery(queryText)
+                  }, 300)
+                  timeoutRefs.current.add(executeTimeout)
+                }}
+              />
+            </div>
+          )}
+          
+          {/* Show demo queries again if user clicks "New Query" */}
+          {!showDemoQueries && chatMessages.length === 0 && !response && !isLoading && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 mb-4 sm:mb-6">
+              <DemoQueries 
+                onSelectQuery={(queryText) => {
+                  setQuery(queryText)
+                  // Execute query after a short delay
+                  const executeTimeout = setTimeout(() => {
+                    timeoutRefs.current.delete(executeTimeout)
+                    handleQuery(queryText)
+                  }, 300)
+                  timeoutRefs.current.add(executeTimeout)
+                }}
+              />
+            </div>
+          )}
           
           {/* Chat History - Show all messages in the current chat */}
           {currentChatId ? (
