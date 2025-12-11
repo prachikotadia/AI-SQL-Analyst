@@ -32,13 +32,13 @@ export function ApiKeyErrorModal({ open, onOpenChange }: ApiKeyErrorModalProps) 
                 Sorry, you need to add your API keys for searches to work!
               </p>
               <p className="text-sm text-amber-700 dark:text-amber-300">
-                Without the keys, I&apos;m like a detective without a magnifying glass 🔍 — I can see the questions, but I can&apos;t solve the mysteries!
+                Without the keys, I&apos;m like a detective without a magnifying glass 🔍, I can see the questions, but I can&apos;t solve the mysteries!
               </p>
               <p className="text-sm text-amber-700 dark:text-amber-300 pt-2">
-                It&apos;s like trying to make coffee without beans ☕ — the machine is ready, but there&apos;s nothing to brew! Or like a chef without ingredients 🧑‍🍳 — I have all the recipes, but no way to cook them up!
+                It&apos;s like trying to make coffee without beans ☕ the machine is ready, but there&apos;s nothing to brew! Or like a chef without ingredients 🧑‍🍳. I have all the recipes, but no way to cook them up!
               </p>
               <p className="text-sm text-amber-700 dark:text-amber-300">
-                Think of me as a superhero 🦸 who lost their superpowers — I&apos;m here, I&apos;m ready, but I need that special key to unlock my full potential!
+                Think of me as a superhero 🦸 who lost their superpowers, I&apos;m here, I&apos;m ready, but I need that special key to unlock my full potential!
               </p>
             </div>
           </div>
