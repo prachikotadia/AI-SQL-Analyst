@@ -315,8 +315,12 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
     return value.toString()
   }
 
-  // Format tooltip values
-  const formatTooltipValue = (value: unknown, name: string) => {
+  // Format tooltip values - returns React.ReactNode for JSX compatibility
+  const formatTooltipValue = (value: unknown, name: string): React.ReactNode => {
+    if (value === null || value === undefined) {
+      return ''
+    }
+    
     if (typeof value === 'number') {
       if (name.toLowerCase().includes('amount') || name.toLowerCase().includes('revenue') || name.toLowerCase().includes('price') || name.toLowerCase().includes('cost')) {
         return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
@@ -325,7 +329,21 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
       if (value >= 1000) return `${(value / 1000).toFixed(2)}K`
       return new Intl.NumberFormat('en-US').format(value)
     }
-    return value
+    
+    if (typeof value === 'string') {
+      return value
+    }
+    
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No'
+    }
+    
+    // Fallback for objects/arrays - convert to string
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return String(value)
+    }
   }
 
   // Custom tooltip component
@@ -342,7 +360,7 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
           <p className="font-semibold mb-2">{label}</p>
           {payload.map((entry, index: number) => (
             <p key={index} className="text-sm" style={{ color: entry.color }}>
-              {entry.name}: {formatTooltipValue(entry.value, entry.name)}
+              {entry.name || 'Value'}: {formatTooltipValue(entry.value, entry.name || '')}
             </p>
           ))}
         </div>
@@ -730,7 +748,7 @@ export function renderChart({ data, chartSpec, columns, height = 400 }: RenderCh
       const MAX_PIE_ITEMS = 12 // Show top 12 items, group rest as "Others"
       
       let pieData = [...data]
-      let othersData: { name: string; value: number } | null = null
+      let othersData: Record<string, string | number> | null = null
       
       // Sort by yField value (descending) to get top items
       if (yField && typeof data[0]?.[yField] === 'number') {

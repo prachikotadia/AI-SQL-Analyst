@@ -196,8 +196,16 @@ export async function executeSqlPrisma(sql: string): Promise<ExecutionResult> {
 
     // Infer column metadata
     const firstRow = result[0]
-    const columns: ColumnMetadata[] = Object.keys(firstRow).map(key => {
-      const value = firstRow[key]
+    if (!firstRow || typeof firstRow !== 'object') {
+      return {
+        data: [],
+        columns: [],
+        error: 'Invalid query result format',
+      }
+    }
+    
+    const columns: ColumnMetadata[] = Object.keys(firstRow as Record<string, unknown>).map(key => {
+      const value = (firstRow as Record<string, unknown>)[key]
       let type = 'text'
       
       if (typeof value === 'number') {
@@ -213,8 +221,12 @@ export async function executeSqlPrisma(sql: string): Promise<ExecutionResult> {
 
     // Convert data - handle BigInt, Date, and other special types
     const data = result.map(row => {
-      const converted: Record<string, any> = {}
-      for (const [key, value] of Object.entries(row)) {
+      const converted: Record<string, unknown> = {}
+      if (!row || typeof row !== 'object') {
+        return converted
+      }
+      const rowObj = row as Record<string, unknown>
+      for (const [key, value] of Object.entries(rowObj)) {
         if (value instanceof Date) {
           converted[key] = value.toISOString()
         } else if (typeof value === 'bigint') {

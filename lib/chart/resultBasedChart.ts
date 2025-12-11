@@ -88,7 +88,8 @@ export function generateChartFromResult(
   if (columns.length === 1 && isNumeric(firstRow[columnNames[0]])) {
     const value = firstRow[columnNames[0]]
     // Create comparison pie: this value vs others
-    const othersValue = totalCount && totalCount > value ? totalCount - value : value * 0.1
+    const numValue = typeof value === 'number' ? value : (typeof value === 'string' ? parseFloat(value) || 0 : 0)
+    const othersValue = totalCount && totalCount > numValue ? totalCount - numValue : numValue * 0.1
     return {
       chartSpec: {
         type: 'pie',

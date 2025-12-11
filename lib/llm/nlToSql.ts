@@ -419,7 +419,7 @@ Return valid JSON with fields: reasoning, sql, chart (with type, xField, yField,
           seriesField: 'not_available',
         },
       },
-      error: error.message || 'Failed to convert natural language to SQL',
+      error: errorMessage || 'Failed to convert natural language to SQL',
     }
   }
 }
