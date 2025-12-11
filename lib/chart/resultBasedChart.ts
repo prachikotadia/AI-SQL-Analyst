@@ -97,8 +97,8 @@ export function generateChartFromResult(
         yField: 'value',
       },
       chartData: [
-        { segment: 'Result', value: Number(value) },
-        { segment: 'Others', value: Number(othersValue) },
+        { segment: 'Result', value: numValue },
+        { segment: 'Others', value: othersValue },
       ],
     }
   }
