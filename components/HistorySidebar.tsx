@@ -46,15 +46,15 @@ export function HistorySidebar({
   onMessageClick,
 }: HistorySidebarProps) {
   return (
-    <div className="w-80 border-r bg-gradient-to-b from-background to-muted/30 p-4 space-y-6 h-screen overflow-y-auto backdrop-blur-sm">
+    <div className="w-80 max-w-[85vw] border-r bg-gradient-to-b from-background to-muted/30 p-3 sm:p-4 space-y-4 sm:space-y-6 h-screen overflow-y-auto backdrop-blur-sm">
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Database className="h-5 w-5 text-primary-foreground" />
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-primary flex items-center justify-center flex-shrink-0">
+            <Database className="h-4 w-4 sm:h-5 sm:w-5 text-primary-foreground" />
           </div>
-          <h1 className="text-2xl font-bold">AI SQL Analyst</h1>
+          <h1 className="text-lg sm:text-2xl font-bold truncate">AI SQL Analyst</h1>
         </div>
-        <p className="text-sm text-muted-foreground mb-4">
+        <p className="text-xs sm:text-sm text-muted-foreground mb-3 sm:mb-4">
           Ask questions in English. Get SQL, charts, and answers.
         </p>
         <div className="space-y-2">
@@ -63,27 +63,30 @@ export function HistorySidebar({
               variant="outline"
               size="sm"
               onClick={onNewChat}
-              className="w-full neumorphic-button"
+              className="w-full neumorphic-button text-xs sm:text-sm min-h-[44px]"
             >
               <Plus className="mr-2 h-4 w-4" />
-              New Chat
+              <span className="hidden sm:inline">New Chat</span>
+              <span className="sm:hidden">New</span>
             </Button>
           )}
           <Button
             variant="outline"
             size="sm"
             onClick={onThemeToggle}
-            className="w-full"
+            className="w-full text-xs sm:text-sm min-h-[44px]"
           >
             {theme === 'dark' ? (
               <>
                 <Sun className="mr-2 h-4 w-4" />
-                Light Mode
+                <span className="hidden sm:inline">Light Mode</span>
+                <span className="sm:hidden">Light</span>
               </>
             ) : (
               <>
                 <Moon className="mr-2 h-4 w-4" />
-                Dark Mode
+                <span className="hidden sm:inline">Dark Mode</span>
+                <span className="sm:hidden">Dark</span>
               </>
             )}
           </Button>
@@ -92,7 +95,7 @@ export function HistorySidebar({
               variant="outline"
               size="sm"
               onClick={onLogout}
-              className="w-full text-destructive hover:text-destructive"
+              className="w-full text-destructive hover:text-destructive text-xs sm:text-sm min-h-[44px]"
             >
               <LogOut className="mr-2 h-4 w-4" />
               Logout
@@ -103,7 +106,7 @@ export function HistorySidebar({
 
       {chats.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold mb-2">Chats</h2>
+          <h2 className="text-xs sm:text-sm font-semibold mb-2">Chats</h2>
           <div className="space-y-1">
             {chats.map((chat) => (
               <div

@@ -521,13 +521,13 @@ export function QueryInput({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 animate-in fade-in-50 duration-300">
+    <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4 animate-in fade-in-50 duration-300">
       <div 
-        className="neumorphic-card border-2 border-dashed p-4 transition-all duration-200 hover:border-primary/50"
+        className="neumorphic-card border-2 border-dashed p-3 sm:p-4 transition-all duration-200 hover:border-primary/50"
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        <div className="flex gap-4">
+        <div className="flex gap-2 sm:gap-4">
           <div className="flex-1 relative">
             <Textarea
               ref={queryInputRef}
@@ -546,8 +546,8 @@ export function QueryInput({
                 }, 200)
                 timeoutRefs.current.add(blurTimeout)
               }}
-              placeholder="Ask a question in natural language... e.g., 'Show revenue in the last 30 days by product category' (Press Enter to run, Shift+Enter for newline)"
-              className="neumorphic-input min-h-[100px] resize-none transition-all duration-200 border-0"
+              placeholder="Ask a question in natural language... (Press Enter to run)"
+              className="neumorphic-input min-h-[80px] sm:min-h-[100px] resize-none transition-all duration-200 border-0 text-sm sm:text-base"
               disabled={isLoading}
             />
             <QuerySuggestions
@@ -557,7 +557,7 @@ export function QueryInput({
               visible={showSuggestions && !isLoading}
             />
             {attachedFiles.length === 0 && (
-              <p className="text-sm text-muted-foreground mt-2 px-1">
+              <p className="text-xs sm:text-sm text-muted-foreground mt-2 px-1">
                 Attach a CSV or Excel file to this chat, then write your question in natural language.
               </p>
             )}
@@ -581,17 +581,19 @@ export function QueryInput({
               size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={isLoading || isUploading}
-              className="neumorphic-button gap-2 relative"
+              className="neumorphic-button gap-2 relative min-h-[44px] text-xs sm:text-sm"
             >
               {isUploading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Uploading...
+                  <span className="hidden sm:inline">Uploading...</span>
+                  <span className="sm:hidden">...</span>
                 </>
               ) : (
                 <>
                   <Paperclip className="h-4 w-4" />
-                  Attach CSV/Excel
+                  <span className="hidden sm:inline">Attach CSV/Excel</span>
+                  <span className="sm:hidden">Attach</span>
                 </>
               )}
             </Button>
@@ -601,23 +603,23 @@ export function QueryInput({
           {attachedFiles.map((file) => (
             <div
               key={file.id}
-              className="file-pill-success inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all duration-200"
+              className="file-pill-success inline-flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-all duration-200 max-w-full"
             >
-              <FileText className="h-3.5 w-3.5 text-green-600 dark:text-green-400" />
+              <FileText className="h-3.5 w-3.5 text-green-600 dark:text-green-400 flex-shrink-0" />
               <button
                 type="button"
                 onClick={() => setViewingFile({ id: file.id, fileName: file.fileName })}
-                className="font-medium text-green-700 dark:text-green-300 hover:underline cursor-pointer"
+                className="font-medium text-green-700 dark:text-green-300 hover:underline cursor-pointer truncate max-w-[120px] sm:max-w-none"
                 title={`Click to view ${file.fileName}`}
                 disabled={isLoading}
               >
                 {file.fileName}
               </button>
-              <span className="text-xs text-green-600/80 dark:text-green-400/80">({file.rowCount} rows)</span>
+              <span className="text-[10px] sm:text-xs text-green-600/80 dark:text-green-400/80 flex-shrink-0">({file.rowCount})</span>
               <button
                 type="button"
                 onClick={() => setViewingFile({ id: file.id, fileName: file.fileName })}
-                className="ml-1 hover:bg-green-200/50 dark:hover:bg-green-900/50 rounded p-0.5 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                className="ml-1 hover:bg-green-200/50 dark:hover:bg-green-900/50 rounded p-1 sm:p-0.5 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500/50 min-w-[32px] min-h-[32px] flex items-center justify-center"
                 title={`View ${file.fileName}`}
                 aria-label={`View ${file.fileName}`}
                 disabled={isLoading}
@@ -627,7 +629,7 @@ export function QueryInput({
               <button
                 type="button"
                 onClick={() => handleRemoveFile(file.id)}
-                className="ml-1 hover:bg-green-200/50 dark:hover:bg-green-900/50 rounded p-0.5 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                className="ml-1 hover:bg-green-200/50 dark:hover:bg-green-900/50 rounded p-1 sm:p-0.5 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500/50 min-w-[32px] min-h-[32px] flex items-center justify-center"
                 disabled={isLoading}
                 aria-label={`Remove ${file.fileName}`}
               >
@@ -660,8 +662,8 @@ export function QueryInput({
         onCancel={handlePreviewCancel}
       />
       
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {onNewQuery && chatId && (
             <Button
               type="button"
@@ -673,15 +675,15 @@ export function QueryInput({
                 queryInputRef.current?.focus()
               }}
               disabled={isLoading}
-              className="gap-2"
+              className="gap-2 min-h-[44px] text-xs sm:text-sm flex-1 sm:flex-initial"
             >
               <Plus className="h-4 w-4" />
-              New Query
+              <span className="hidden sm:inline">New Query</span>
+              <span className="sm:hidden">New</span>
             </Button>
           )}
           <QueryTemplates onSelectTemplate={(template) => setQuery(template)} />
         </div>
-        <div className="flex-1" />
         <RunButton 
           onClick={handleSubmit} 
           isLoading={isLoading} 

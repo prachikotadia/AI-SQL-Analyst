@@ -131,13 +131,20 @@ export function ExportButton({
           variant="outline"
           size="sm"
           disabled={isExporting || !data || data.length === 0}
-          className="gap-2"
+          className="gap-2 min-h-[44px] text-xs sm:text-sm"
         >
           <Download className="h-4 w-4" />
-          {isExporting ? 'Exporting...' : 'Export'}
+          {isExporting ? (
+            <>
+              <span className="hidden sm:inline">Exporting...</span>
+              <span className="sm:hidden">...</span>
+            </>
+          ) : (
+            'Export'
+          )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-48 sm:w-56">
         <DropdownMenuItem onClick={() => handleExport('csv')} disabled={isExporting}>
           <FileText className="h-4 w-4 mr-2" />
           Export as CSV

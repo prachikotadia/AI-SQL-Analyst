@@ -93,16 +93,16 @@ export function ChatHistory({ messages, isLoading, currentResponse, currentQuery
       }}
     >
       {displayMessages.map((message, index) => (
-        <div key={message.id || index} className="space-y-3">
+        <div key={message.id || index} className="space-y-2 sm:space-y-3">
           {/* User Query */}
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-              <User className="h-4 w-4 text-primary-foreground" />
+          <div className="flex items-start gap-2 sm:gap-3">
+            <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary flex items-center justify-center">
+              <User className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary-foreground" />
             </div>
             <Card className="flex-1 bg-primary/5 border-primary/20">
-              <CardContent className="p-4">
-                <p className="text-sm font-medium whitespace-pre-wrap">{message.queryText}</p>
-                <p className="text-xs text-muted-foreground mt-2">
+              <CardContent className="p-3 sm:p-4">
+                <p className="text-xs sm:text-sm font-medium whitespace-pre-wrap break-words">{message.queryText}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-1 sm:mt-2">
                   {new Date(message.timestamp).toLocaleString()}
                 </p>
               </CardContent>
@@ -111,11 +111,11 @@ export function ChatHistory({ messages, isLoading, currentResponse, currentQuery
 
           {/* Assistant Response */}
           {message.response && (
-            <div className="flex items-start gap-3 ml-11">
-              <div className="flex-shrink-0 w-8 h-8 rounded-full bg-muted flex items-center justify-center">
-                <Bot className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-start gap-2 sm:gap-3 ml-9 sm:ml-11">
+              <div className="flex-shrink-0 w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-muted flex items-center justify-center">
+                <Bot className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <ResultsPanel response={message.response} isLoading={false} query={message.queryText} chatId={chatId} />
               </div>
             </div>

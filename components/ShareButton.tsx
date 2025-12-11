@@ -126,12 +126,12 @@ export function ShareButton({ response, query, chatId }: ShareButtonProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
+        <Button variant="outline" size="sm" className="gap-2 min-h-[44px] text-xs sm:text-sm">
           <Share2 className="h-4 w-4" />
           Share
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-48 sm:w-56">
         <DropdownMenuItem onClick={copyShareableLink}>
           {copied ? (
             <>

@@ -38,22 +38,23 @@ export function PerformanceMetrics({
 
   return (
     <Card className="neumorphic-card">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Zap className="h-5 w-5" />
+      <CardHeader className="p-3 sm:p-6">
+        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+          <Zap className="h-4 w-4 sm:h-5 sm:w-5" />
           Performance Metrics
         </CardTitle>
-        <CardDescription>Query execution statistics</CardDescription>
+        <CardDescription className="text-xs sm:text-sm">Query execution statistics</CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <CardContent className="p-3 sm:p-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
           {executionTimeMs !== undefined && (
-            <div className="p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <Clock className="h-4 w-4" />
-                Execution Time
+            <div className="p-2 sm:p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground mb-1">
+                <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Execution Time</span>
+                <span className="sm:hidden">Time</span>
               </div>
-              <div className="text-2xl font-bold">
+              <div className="text-lg sm:text-2xl font-bold">
                 {executionTimeMs < 1000
                   ? `${executionTimeMs.toFixed(0)}ms`
                   : `${(executionTimeMs / 1000).toFixed(2)}s`}
@@ -62,37 +63,39 @@ export function PerformanceMetrics({
           )}
 
           {tokenUsage !== undefined && (
-            <div className="p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <TrendingUp className="h-4 w-4" />
-                Tokens Used
+            <div className="p-2 sm:p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground mb-1">
+                <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Tokens Used</span>
+                <span className="sm:hidden">Tokens</span>
               </div>
-              <div className="text-2xl font-bold">{tokenUsage.toLocaleString()}</div>
+              <div className="text-lg sm:text-2xl font-bold">{tokenUsage.toLocaleString()}</div>
             </div>
           )}
 
           {queryComplexity !== undefined && (
-            <div className="p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <Code className="h-4 w-4" />
+            <div className="p-2 sm:p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground mb-1">
+                <Code className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 Complexity
               </div>
-              <div className={`text-2xl font-bold ${getComplexityColor(queryComplexity)}`}>
+              <div className={`text-lg sm:text-2xl font-bold ${getComplexityColor(queryComplexity)}`}>
                 {getComplexityLabel(queryComplexity)}
               </div>
-              <div className="text-xs text-muted-foreground mt-1">
+              <div className="text-[10px] sm:text-xs text-muted-foreground mt-1">
                 Score: {queryComplexity}/10
               </div>
             </div>
           )}
 
           {sqlLength !== undefined && (
-            <div className="p-3 rounded-lg bg-muted/50">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-                <Code className="h-4 w-4" />
-                SQL Length
+            <div className="p-2 sm:p-3 rounded-lg bg-muted/50">
+              <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground mb-1">
+                <Code className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">SQL Length</span>
+                <span className="sm:hidden">Length</span>
               </div>
-              <div className="text-2xl font-bold">{sqlLength} chars</div>
+              <div className="text-lg sm:text-2xl font-bold">{sqlLength} chars</div>
             </div>
           )}
         </div>

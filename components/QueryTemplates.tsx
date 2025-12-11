@@ -44,12 +44,13 @@ export function QueryTemplates({ onSelectTemplate }: QueryTemplatesProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="gap-2">
+        <Button variant="outline" size="sm" className="gap-2 min-h-[44px] text-xs sm:text-sm">
           <FileText className="h-4 w-4" />
-          Templates
+          <span className="hidden sm:inline">Templates</span>
+          <span className="sm:hidden">Tpl</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
+      <DropdownMenuContent align="start" className="w-64 sm:w-72 max-h-[80vh] overflow-y-auto">
         <DropdownMenuLabel>Query Templates</DropdownMenuLabel>
         <DropdownMenuSeparator />
         {Object.entries(templatesByCategory).map(([category, templates]) => (

@@ -97,12 +97,13 @@ export function BookmarkButton({ query, response }: BookmarkButtonProps) {
         variant="outline"
         size="sm"
         onClick={handleBookmark}
-        className="gap-2"
+        className="gap-2 min-h-[44px] text-xs sm:text-sm"
       >
         {isBookmarked ? (
           <>
             <BookmarkCheck className="h-4 w-4" />
-            Bookmarked
+            <span className="hidden sm:inline">Bookmarked</span>
+            <span className="sm:hidden">Saved</span>
           </>
         ) : (
           <>
@@ -113,44 +114,46 @@ export function BookmarkButton({ query, response }: BookmarkButtonProps) {
       </Button>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Star className="h-5 w-5" />
+            <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <Star className="h-4 w-4 sm:h-5 sm:w-5" />
               Save Bookmark
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-xs sm:text-sm">
               Save this query to your bookmarks for quick access later.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
+          <div className="space-y-3 sm:space-y-4 py-2 sm:py-4">
             <div>
-              <label className="text-sm font-medium mb-2 block">Query</label>
-              <div className="p-3 bg-muted rounded-lg text-sm font-mono">
+              <label className="text-xs sm:text-sm font-medium mb-2 block">Query</label>
+              <div className="p-2 sm:p-3 bg-muted rounded-lg text-xs sm:text-sm font-mono break-words">
                 {query}
               </div>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">Category (optional)</label>
+              <label className="text-xs sm:text-sm font-medium mb-2 block">Category (optional)</label>
               <Input
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 placeholder="e.g., Sales, Analytics, Reports"
+                className="min-h-[44px] text-xs sm:text-sm"
               />
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">Description (optional)</label>
+              <label className="text-xs sm:text-sm font-medium mb-2 block">Description (optional)</label>
               <Input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Brief description of this query"
+                className="min-h-[44px] text-xs sm:text-sm"
               />
             </div>
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={() => setShowDialog(false)}>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 sm:pt-4">
+              <Button variant="outline" onClick={() => setShowDialog(false)} className="min-h-[44px] text-xs sm:text-sm">
                 Cancel
               </Button>
-              <Button onClick={handleSaveBookmark}>
+              <Button onClick={handleSaveBookmark} className="min-h-[44px] text-xs sm:text-sm">
                 Save Bookmark
               </Button>
             </div>

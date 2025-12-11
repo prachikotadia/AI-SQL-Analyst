@@ -150,10 +150,10 @@ export function FilePreviewModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle>File Preview</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-base sm:text-lg">File Preview</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
             Review file details before uploading
           </DialogDescription>
         </DialogHeader>
@@ -172,20 +172,20 @@ export function FilePreviewModal({
         )}
 
         {previewData && !error && (
-          <div className="space-y-4">
+          <div className="space-y-3 sm:space-y-4">
             {/* File Info */}
-            <div className="grid grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 p-3 sm:p-4 bg-muted rounded-lg">
               <div>
-                <div className="text-sm text-muted-foreground">File Name</div>
-                <div className="font-medium">{previewData.fileName}</div>
+                <div className="text-xs sm:text-sm text-muted-foreground">File Name</div>
+                <div className="font-medium text-xs sm:text-sm break-words">{previewData.fileName}</div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">File Size</div>
-                <div className="font-medium">{formatFileSize(previewData.fileSize)}</div>
+                <div className="text-xs sm:text-sm text-muted-foreground">File Size</div>
+                <div className="font-medium text-xs sm:text-sm">{formatFileSize(previewData.fileSize)}</div>
               </div>
               <div>
-                <div className="text-sm text-muted-foreground">Total Rows</div>
-                <div className="font-medium">{previewData.rowCount.toLocaleString()}</div>
+                <div className="text-xs sm:text-sm text-muted-foreground">Total Rows</div>
+                <div className="font-medium text-xs sm:text-sm">{previewData.rowCount.toLocaleString()}</div>
               </div>
             </div>
 
@@ -206,12 +206,12 @@ export function FilePreviewModal({
 
             {/* Column Types */}
             <div>
-              <h3 className="font-semibold mb-2">Detected Columns ({previewData.columns.length})</h3>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              <h3 className="font-semibold mb-2 text-xs sm:text-sm">Detected Columns ({previewData.columns.length})</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                 {previewData.columns.map((col, idx) => (
-                  <div key={idx} className="p-2 bg-muted rounded text-sm">
-                    <div className="font-medium">{col.name}</div>
-                    <div className="text-xs text-muted-foreground">{col.type}</div>
+                  <div key={idx} className="p-2 bg-muted rounded text-xs sm:text-sm">
+                    <div className="font-medium break-words">{col.name}</div>
+                    <div className="text-[10px] sm:text-xs text-muted-foreground">{col.type}</div>
                   </div>
                 ))}
               </div>
@@ -219,13 +219,13 @@ export function FilePreviewModal({
 
             {/* Data Preview */}
             <div>
-              <h3 className="font-semibold mb-2">First 10 Rows Preview</h3>
-              <div className="border rounded-lg overflow-auto max-h-[300px]">
-                <table className="w-full text-sm">
+              <h3 className="font-semibold mb-2 text-xs sm:text-sm">First 10 Rows Preview</h3>
+              <div className="border rounded-lg overflow-x-auto max-h-[300px] -mx-2 px-2 sm:mx-0 sm:px-0">
+                <table className="w-full text-xs sm:text-sm min-w-full">
                   <thead className="bg-muted sticky top-0">
                     <tr>
                       {previewData.columns.map((col, idx) => (
-                        <th key={idx} className="px-3 py-2 text-left font-medium">
+                        <th key={idx} className="px-2 sm:px-3 py-2 text-left font-medium whitespace-nowrap">
                           {col.name}
                         </th>
                       ))}
@@ -235,9 +235,9 @@ export function FilePreviewModal({
                     {previewData.rows.map((row, rowIdx) => (
                       <tr key={rowIdx} className="border-t">
                         {previewData.columns.map((col, colIdx) => (
-                          <td key={colIdx} className="px-3 py-2">
-                            {String(row[col.name] || '').substring(0, 50)}
-                            {String(row[col.name] || '').length > 50 ? '...' : ''}
+                          <td key={colIdx} className="px-2 sm:px-3 py-2 whitespace-nowrap">
+                            {String(row[col.name] || '').substring(0, 30)}
+                            {String(row[col.name] || '').length > 30 ? '...' : ''}
                           </td>
                         ))}
                       </tr>
@@ -248,11 +248,11 @@ export function FilePreviewModal({
             </div>
 
             {/* Actions */}
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button variant="outline" onClick={handleCancel}>
+            <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 pt-3 sm:pt-4 border-t">
+              <Button variant="outline" onClick={handleCancel} className="min-h-[44px] text-xs sm:text-sm w-full sm:w-auto">
                 Cancel
               </Button>
-              <Button onClick={handleConfirm}>
+              <Button onClick={handleConfirm} className="min-h-[44px] text-xs sm:text-sm w-full sm:w-auto">
                 <CheckCircle2 className="h-4 w-4 mr-2" />
                 Confirm Upload
               </Button>

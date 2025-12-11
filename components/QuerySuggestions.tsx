@@ -63,7 +63,7 @@ export function QuerySuggestions({ input, onSelect, onClose, visible }: QuerySug
       ref={containerRef}
       className="absolute z-50 w-full mt-1 max-h-64 overflow-y-auto shadow-lg border"
     >
-      <div className="p-2 space-y-1">
+      <div className="p-1.5 sm:p-2 space-y-1">
         {suggestions.map((suggestion, index) => {
           const isRecent = isRecentQuery(suggestion)
           const isTemplateItem = isTemplate(suggestion)
@@ -73,26 +73,26 @@ export function QuerySuggestions({ input, onSelect, onClose, visible }: QuerySug
               key={`${suggestion}-${index}`}
               type="button"
               onClick={() => onSelect(suggestion)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
+              className={`w-full text-left px-2 sm:px-3 py-2 rounded-md text-xs sm:text-sm transition-colors min-h-[44px] ${
                 index === selectedIndex
                   ? 'bg-primary/10 text-primary font-medium'
                   : 'hover:bg-muted'
               }`}
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2">
                 {isTemplateItem ? (
-                  <Lightbulb className="h-4 w-4 text-yellow-500" />
+                  <Lightbulb className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-500 flex-shrink-0" />
                 ) : isRecent ? (
-                  <Clock className="h-4 w-4 text-blue-500" />
+                  <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500 flex-shrink-0" />
                 ) : (
-                  <Sparkles className="h-4 w-4 text-muted-foreground" />
+                  <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
                 )}
-                <span className="flex-1">{suggestion}</span>
+                <span className="flex-1 break-words">{suggestion}</span>
                 {isTemplateItem && (
-                  <span className="text-xs text-muted-foreground">Template</span>
+                  <span className="text-[10px] sm:text-xs text-muted-foreground flex-shrink-0">Template</span>
                 )}
                 {isRecent && (
-                  <span className="text-xs text-muted-foreground">Recent</span>
+                  <span className="text-[10px] sm:text-xs text-muted-foreground flex-shrink-0">Recent</span>
                 )}
               </div>
             </button>

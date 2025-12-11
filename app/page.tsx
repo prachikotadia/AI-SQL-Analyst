@@ -874,20 +874,20 @@ export default function Home() {
 
   if (!authenticated) {
     return (
-      <div className="flex h-screen items-center justify-center bg-background">
+      <div className="flex h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Welcome to AI SQL Analyst</CardTitle>
-            <CardDescription>
+          <CardHeader className="p-4 sm:p-6">
+            <CardTitle className="text-lg sm:text-xl">Welcome to AI SQL Analyst</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
               A production-grade natural language to SQL query engine
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-4 sm:p-6">
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 This is a demo application. Click below to enter demo mode and start querying your database with natural language.
               </p>
-              <Button onClick={handleLogin} className="w-full" size="lg">
+              <Button onClick={handleLogin} className="w-full min-h-[44px] text-sm sm:text-base" size="lg">
                 Enter Demo Mode
               </Button>
             </div>
@@ -916,12 +916,12 @@ export default function Home() {
         />
       }
     >
-      <main className="flex-1 overflow-hidden p-6 bg-gradient-to-b from-background to-muted/20">
+      <main className="flex-1 overflow-hidden p-3 sm:p-4 md:p-6 bg-gradient-to-b from-background to-muted/20">
         <div className="max-w-6xl mx-auto h-full flex flex-col">
-          <div className="animate-in fade-in slide-in-from-top-4 duration-500 flex-shrink-0 mb-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-1 h-8 bg-primary rounded-full"></div>
-              <h2 className="text-2xl font-bold">Query</h2>
+          <div className="animate-in fade-in slide-in-from-top-4 duration-500 flex-shrink-0 mb-4 sm:mb-6">
+            <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+              <div className="w-1 h-6 sm:h-8 bg-primary rounded-full"></div>
+              <h2 className="text-xl sm:text-2xl font-bold">Query</h2>
             </div>
             <QueryInput 
               onQuery={handleQuery} 
@@ -953,12 +953,12 @@ export default function Home() {
           {/* Chat History - Show all messages in the current chat */}
           {currentChatId ? (
             <div ref={resultsRef} className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex-1 flex flex-col min-h-0">
-              <div className="flex items-center gap-3 mb-4 flex-shrink-0">
-                <div className="w-1 h-8 bg-primary rounded-full"></div>
-                <h2 className="text-2xl font-bold">Chat History</h2>
+              <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4 flex-shrink-0">
+                <div className="w-1 h-6 sm:h-8 bg-primary rounded-full"></div>
+                <h2 className="text-xl sm:text-2xl font-bold">Chat History</h2>
                 {chatMessages.length > 0 && (
-                  <span className="text-sm text-muted-foreground ml-2">
-                    ({chatMessages.length} {chatMessages.length === 1 ? 'message' : 'messages'})
+                  <span className="text-xs sm:text-sm text-muted-foreground ml-1 sm:ml-2">
+                    ({chatMessages.length} {chatMessages.length === 1 ? 'msg' : 'msgs'})
                   </span>
                 )}
               </div>
@@ -976,9 +976,9 @@ export default function Home() {
             /* Results Panel - Show current response if no chat yet */
             response && (
               <div ref={resultsRef} className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex-1 overflow-y-auto">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-1 h-8 bg-primary rounded-full"></div>
-                  <h2 className="text-2xl font-bold">Results</h2>
+                <div className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+                  <div className="w-1 h-6 sm:h-8 bg-primary rounded-full"></div>
+                  <h2 className="text-xl sm:text-2xl font-bold">Results</h2>
                 </div>
                 <ResultsPanel response={response} isLoading={isLoading} query={query} chatId={currentChatId || undefined} />
               </div>

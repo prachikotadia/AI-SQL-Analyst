@@ -68,10 +68,10 @@ export function FileViewerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto">
+      <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle>{fileName}</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="text-base sm:text-lg break-words">{fileName}</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
             {loading ? 'Loading file data...' : (
               <>
                 Showing {fileData.length} {fileData.length === 1 ? 'row' : 'rows'}
@@ -82,7 +82,7 @@ export function FileViewerModal({
           </DialogDescription>
         </DialogHeader>
         
-        <div className="mt-4">
+        <div className="mt-3 sm:mt-4">
           {loading ? (
             <div className="space-y-4">
               <Skeleton className="h-10 w-full" />

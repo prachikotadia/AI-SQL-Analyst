@@ -142,17 +142,17 @@ export function CommandPalette({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[80vh] p-0">
-        <DialogHeader className="px-6 pt-6 pb-4">
-          <DialogTitle className="flex items-center gap-2">
-            <Command className="h-5 w-5" />
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] p-0">
+        <DialogHeader className="px-4 sm:px-6 pt-4 sm:pt-6 pb-3 sm:pb-4">
+          <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Command className="h-4 w-4 sm:h-5 sm:w-5" />
             Command Palette
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-xs sm:text-sm">
             Search for templates, recent queries, or bookmarks
           </DialogDescription>
         </DialogHeader>
-        <div className="px-6 pb-4">
+        <div className="px-4 sm:px-6 pb-3 sm:pb-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -162,14 +162,14 @@ export function CommandPalette({
                 setSelectedIndex(0)
               }}
               placeholder="Type to search..."
-              className="pl-9"
+              className="pl-9 min-h-[44px] text-xs sm:text-sm"
               autoFocus
             />
           </div>
         </div>
-        <div className="max-h-[400px] overflow-y-auto px-6 pb-6">
+        <div className="max-h-[50vh] sm:max-h-[400px] overflow-y-auto px-4 sm:px-6 pb-4 sm:pb-6">
           {filteredCommands.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground">
+            <div className="py-8 text-center text-xs sm:text-sm text-muted-foreground">
               No results found
             </div>
           ) : (
@@ -179,23 +179,23 @@ export function CommandPalette({
                   key={cmd.id}
                   onClick={cmd.action}
                   className={cn(
-                    'w-full flex items-start gap-3 p-3 rounded-lg text-left transition-colors',
+                    'w-full flex items-start gap-2 sm:gap-3 p-2.5 sm:p-3 rounded-lg text-left transition-colors min-h-[44px]',
                     'hover:bg-accent focus:bg-accent focus:outline-none',
                     idx === selectedIndex && 'bg-accent'
                   )}
                 >
-                  <div className="mt-0.5 text-muted-foreground">{cmd.icon}</div>
+                  <div className="mt-0.5 text-muted-foreground flex-shrink-0">{cmd.icon}</div>
                   <div className="flex-1 min-w-0">
-                    <div className="font-medium">{cmd.title}</div>
-                    <div className="text-sm text-muted-foreground">{cmd.description}</div>
+                    <div className="font-medium text-xs sm:text-sm break-words">{cmd.title}</div>
+                    <div className="text-[10px] sm:text-sm text-muted-foreground break-words">{cmd.description}</div>
                   </div>
                 </button>
               ))}
             </div>
           )}
         </div>
-        <div className="px-6 pb-6 pt-4 border-t text-xs text-muted-foreground">
-          <div className="flex items-center justify-between">
+        <div className="px-4 sm:px-6 pb-4 sm:pb-6 pt-3 sm:pt-4 border-t text-[10px] sm:text-xs text-muted-foreground">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 sm:gap-0">
             <span>↑↓ Navigate</span>
             <span>Enter Select</span>
             <span>Esc Close</span>

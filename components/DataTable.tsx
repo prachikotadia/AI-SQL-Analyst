@@ -92,27 +92,27 @@ export function DataTable({ data, columns }: DataTableProps) {
   return (
     <Card className="neumorphic-card">
       <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2">
-            <Database className="h-5 w-5" />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
+            <Database className="h-4 w-4 sm:h-5 sm:w-5" />
             Results ({data.length} rows)
           </CardTitle>
           {totalPages > 1 && (
-            <span className="text-sm text-muted-foreground">
+            <span className="text-xs sm:text-sm text-muted-foreground">
               Page {currentPage} of {totalPages}
             </span>
           )}
         </div>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
+        <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+          <table className="w-full border-collapse min-w-full">
             <thead>
               <tr className="border-b">
                 {columns.map((col) => (
                   <th
                     key={col.name}
-                    className="text-left p-2 font-semibold text-sm"
+                    className="text-left p-2 sm:p-3 font-semibold text-xs sm:text-sm whitespace-nowrap"
                   >
                     {col.name}
                   </th>
@@ -130,7 +130,7 @@ export function DataTable({ data, columns }: DataTableProps) {
                       value = rowKey ? row[rowKey] : null
                     }
                     return (
-                      <td key={col.name} className="p-2 text-sm">
+                      <td key={col.name} className="p-2 sm:p-3 text-xs sm:text-sm whitespace-nowrap">
                         {value !== null && value !== undefined
                           ? String(value)
                           : '—'}

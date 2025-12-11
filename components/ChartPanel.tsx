@@ -251,24 +251,26 @@ export function ChartPanel({ data, chartSpec, columns, query }: ChartPanelProps)
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <Tabs defaultValue="bar" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="bar">Bar Chart</TabsTrigger>
-          <TabsTrigger value="pie">Pie Chart</TabsTrigger>
-          <TabsTrigger value="line">Line Chart</TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+          <TabsList className="grid w-full grid-cols-3 min-w-max sm:min-w-0">
+            <TabsTrigger value="bar" className="text-xs sm:text-sm min-h-[44px] px-2 sm:px-4">Bar</TabsTrigger>
+            <TabsTrigger value="pie" className="text-xs sm:text-sm min-h-[44px] px-2 sm:px-4">Pie</TabsTrigger>
+            <TabsTrigger value="line" className="text-xs sm:text-sm min-h-[44px] px-2 sm:px-4">Line</TabsTrigger>
+          </TabsList>
+        </div>
         
-        <TabsContent value="bar" className="mt-4 animate-in fade-in-50 duration-300">
+        <TabsContent value="bar" className="mt-3 sm:mt-4 animate-in fade-in-50 duration-300">
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
+            <CardHeader className="p-3 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                 <div>
-                  <CardTitle>
+                  <CardTitle className="text-base sm:text-lg">
                     {generateChartTitle('bar', xField, yField)}
                   </CardTitle>
                   {xField && yField && (
-                    <CardDescription>
+                    <CardDescription className="text-xs sm:text-sm">
                       {generateChartDescription(xField, yField, data.length)}
                     </CardDescription>
                   )}
@@ -277,15 +279,16 @@ export function ChartPanel({ data, chartSpec, columns, query }: ChartPanelProps)
                   variant="outline"
                   size="sm"
                   onClick={() => setFullscreenChart({ type: 'bar' })}
-                  className="gap-2"
+                  className="gap-2 min-h-[44px] text-xs sm:text-sm"
                 >
                   <Maximize2 className="h-4 w-4" />
-                  Fullscreen
+                  <span className="hidden sm:inline">Fullscreen</span>
+                  <span className="sm:hidden">Full</span>
                 </Button>
               </div>
             </CardHeader>
             <CardContent 
-              className="transition-opacity duration-300 cursor-pointer hover:opacity-90"
+              className="p-3 sm:p-6 transition-opacity duration-300 cursor-pointer hover:opacity-90"
               onClick={() => setFullscreenChart({ type: 'bar' })}
             >
               {barResult.error ? (
@@ -299,16 +302,16 @@ export function ChartPanel({ data, chartSpec, columns, query }: ChartPanelProps)
           </Card>
         </TabsContent>
 
-        <TabsContent value="pie" className="mt-4 animate-in fade-in-50 duration-300">
+        <TabsContent value="pie" className="mt-3 sm:mt-4 animate-in fade-in-50 duration-300">
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
+            <CardHeader className="p-3 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                 <div>
-                  <CardTitle>
+                  <CardTitle className="text-base sm:text-lg">
                     {generateChartTitle('pie', xField, yField)}
                   </CardTitle>
                   {xField && yField && (
-                    <CardDescription>
+                    <CardDescription className="text-xs sm:text-sm">
                       {generateChartDescription(xField, yField, data.length)}
                     </CardDescription>
                   )}
@@ -317,15 +320,16 @@ export function ChartPanel({ data, chartSpec, columns, query }: ChartPanelProps)
                   variant="outline"
                   size="sm"
                   onClick={() => setFullscreenChart({ type: 'pie' })}
-                  className="gap-2"
+                  className="gap-2 min-h-[44px] text-xs sm:text-sm"
                 >
                   <Maximize2 className="h-4 w-4" />
-                  Fullscreen
+                  <span className="hidden sm:inline">Fullscreen</span>
+                  <span className="sm:hidden">Full</span>
                 </Button>
               </div>
             </CardHeader>
             <CardContent 
-              className="transition-opacity duration-300 cursor-pointer hover:opacity-90"
+              className="p-3 sm:p-6 transition-opacity duration-300 cursor-pointer hover:opacity-90"
               onClick={() => setFullscreenChart({ type: 'pie' })}
             >
               {pieResult.error ? (
@@ -339,16 +343,16 @@ export function ChartPanel({ data, chartSpec, columns, query }: ChartPanelProps)
           </Card>
         </TabsContent>
 
-        <TabsContent value="line" className="mt-4 animate-in fade-in-50 duration-300">
+        <TabsContent value="line" className="mt-3 sm:mt-4 animate-in fade-in-50 duration-300">
           <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
+            <CardHeader className="p-3 sm:p-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
                 <div>
-                  <CardTitle>
+                  <CardTitle className="text-base sm:text-lg">
                     {generateChartTitle('line', xField, yField)}
                   </CardTitle>
                   {xField && yField && (
-                    <CardDescription>
+                    <CardDescription className="text-xs sm:text-sm">
                       {generateChartDescription(xField, yField, data.length)}
                     </CardDescription>
                   )}
@@ -357,15 +361,16 @@ export function ChartPanel({ data, chartSpec, columns, query }: ChartPanelProps)
                   variant="outline"
                   size="sm"
                   onClick={() => setFullscreenChart({ type: 'line' })}
-                  className="gap-2"
+                  className="gap-2 min-h-[44px] text-xs sm:text-sm"
                 >
                   <Maximize2 className="h-4 w-4" />
-                  Fullscreen
+                  <span className="hidden sm:inline">Fullscreen</span>
+                  <span className="sm:hidden">Full</span>
                 </Button>
               </div>
             </CardHeader>
             <CardContent 
-              className="transition-opacity duration-300 cursor-pointer hover:opacity-90"
+              className="p-3 sm:p-6 transition-opacity duration-300 cursor-pointer hover:opacity-90"
               onClick={() => setFullscreenChart({ type: 'line' })}
             >
               {lineResult.error ? (

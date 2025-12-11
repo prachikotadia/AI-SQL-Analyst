@@ -104,7 +104,7 @@ export function ChartFullscreenModal({
     switch (chartType) {
       case 'bar':
         return (
-          <ResponsiveContainer width="100%" height={600}>
+          <ResponsiveContainer width="100%" height={400}>
             <BarChart
               data={data}
               margin={{ top: 20, right: 30, left: 20, bottom: 100 }}
@@ -174,7 +174,7 @@ export function ChartFullscreenModal({
 
       case 'line':
         return (
-          <ResponsiveContainer width="100%" height={600}>
+          <ResponsiveContainer width="100%" height={400}>
             <LineChart
               data={data}
               margin={{ top: 20, right: 30, left: 20, bottom: 100 }}
@@ -278,7 +278,7 @@ export function ChartFullscreenModal({
         
         return (
           <div className="flex flex-col items-center justify-center">
-            <ResponsiveContainer width="100%" height={600}>
+            <ResponsiveContainer width="100%" height={400}>
               <PieChart style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'center' }}>
                 <Pie
                   data={pieData}
@@ -354,14 +354,15 @@ export function ChartFullscreenModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto">
+      <DialogContent className="max-w-[95vw] max-h-[95vh] overflow-auto p-4 sm:p-6">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            <span>{title}</span>
-            <div className="flex items-center gap-2">
+          <DialogTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0 text-base sm:text-lg">
+            <span className="break-words">{title}</span>
+            <div className="flex items-center gap-2 flex-shrink-0">
               <Button
                 variant="outline"
                 size="sm"
+                className="min-h-[44px] text-xs sm:text-sm"
                 onClick={handleZoomOut}
                 disabled={zoomLevel <= 0.5}
                 title="Zoom Out"
@@ -390,13 +391,15 @@ export function ChartFullscreenModal({
               </Button>
             </div>
           </DialogTitle>
-          {description && <DialogDescription>{description}</DialogDescription>}
+          {description && <DialogDescription className="text-xs sm:text-sm">{description}</DialogDescription>}
         </DialogHeader>
-        
-        <div className="mt-4 space-y-4">
+
+        <div className="mt-3 sm:mt-4 space-y-3 sm:space-y-4">
           {/* Chart */}
-          <div className="border rounded-lg p-4 bg-background">
-            {renderFullscreenChart()}
+          <div className="border rounded-lg p-2 sm:p-4 bg-background overflow-x-auto">
+            <div className="min-w-full">
+              {renderFullscreenChart()}
+            </div>
           </div>
 
           {/* Detailed Data Table */}

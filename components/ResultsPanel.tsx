@@ -137,8 +137,8 @@ export function ResultsPanel({ response, isLoading, query, chatId }: ResultsPane
 
       {/* Export Button, Share Button, Bookmark Button, and Query Explanation */}
       {safeResponse.data && safeResponse.data.length > 0 && (
-        <div className="flex justify-between items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 sm:gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <QueryExplanation
               sql={safeResponse.sql || safeResponse.preview_sql || ''}
               query={safeResponse.reasoning || ''}
@@ -146,7 +146,7 @@ export function ResultsPanel({ response, isLoading, query, chatId }: ResultsPane
             />
             {query && <BookmarkButton query={query} response={safeResponse} />}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <ShareButton response={safeResponse} query={query} chatId={chatId} />
             <ExportButton
               data={safeResponse.data}
@@ -162,38 +162,42 @@ export function ResultsPanel({ response, isLoading, query, chatId }: ResultsPane
       )}
 
       <Tabs defaultValue="reasoning" className="w-full">
-        <TabsList className="neumorphic-card grid w-full grid-cols-5 p-1 gap-1" style={{ display: 'grid' }}>
-          <TabsTrigger 
-            value="reasoning" 
-            className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
-          >
-            Reasoning
-          </TabsTrigger>
-          <TabsTrigger 
-            value="sql" 
-            className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
-          >
-            SQL
-          </TabsTrigger>
-          <TabsTrigger 
-            value="data" 
-            className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
-          >
-            Data {safeResponse.data && safeResponse.data.length > 0 && `(${safeResponse.data.length})`}
-          </TabsTrigger>
-          <TabsTrigger 
-            value="chart" 
-            className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
-          >
-            Chart
-          </TabsTrigger>
-          <TabsTrigger 
-            value="insights" 
-            className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50"
-          >
-            Insights
-          </TabsTrigger>
-        </TabsList>
+        <div className="overflow-x-auto -mx-2 px-2 sm:mx-0 sm:px-0">
+          <TabsList className="neumorphic-card grid w-full grid-cols-5 p-1 gap-1 min-w-max sm:min-w-0" style={{ display: 'grid' }}>
+            <TabsTrigger 
+              value="reasoning" 
+              className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4"
+            >
+              <span className="hidden sm:inline">Reasoning</span>
+              <span className="sm:hidden">Reason</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="sql" 
+              className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4"
+            >
+              SQL
+            </TabsTrigger>
+            <TabsTrigger 
+              value="data" 
+              className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4"
+            >
+              Data {safeResponse.data && safeResponse.data.length > 0 && `(${safeResponse.data.length})`}
+            </TabsTrigger>
+            <TabsTrigger 
+              value="chart" 
+              className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4"
+            >
+              Chart
+            </TabsTrigger>
+            <TabsTrigger 
+              value="insights" 
+              className="data-[state=active]:bg-gradient-to-br data-[state=active]:from-primary/10 data-[state=active]:to-primary/5 data-[state=active]:text-primary data-[state=active]:font-semibold data-[state=active]:shadow-md transition-all hover:underline focus-visible:ring-2 focus-visible:ring-primary/50 text-xs sm:text-sm min-h-[44px] px-2 sm:px-4"
+            >
+              <span className="hidden sm:inline">Insights</span>
+              <span className="sm:hidden">Info</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
         <TabsContent value="reasoning" className="mt-4 animate-in fade-in-50 duration-300">
           <ReasoningPanel reasoning={safeResponse.reasoning || 'No reasoning available.'} metricsInfo={safeResponse.metricsInfo} />
         </TabsContent>

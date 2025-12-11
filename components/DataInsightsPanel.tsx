@@ -134,39 +134,39 @@ export function DataInsightsPanel({ data, columns }: DataInsightsPanelProps) {
 
   return (
     <Card className="neumorphic-card">
-      <CardHeader>
-        <div className="flex items-center justify-between">
+      <CardHeader className="p-3 sm:p-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
           <div>
-            <CardTitle>Data Insights</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-base sm:text-lg">Data Insights</CardTitle>
+            <CardDescription className="text-xs sm:text-sm">
               {data.length} rows • {columns.length} columns
             </CardDescription>
           </div>
-          <Badge className={qualityColors[overallQuality]}>
+          <Badge className={`${qualityColors[overallQuality]} text-xs sm:text-sm`}>
             {overallQuality.charAt(0).toUpperCase() + overallQuality.slice(1)} Quality
           </Badge>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="p-3 sm:p-6 space-y-3 sm:space-y-4">
         {/* Overall Statistics */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="p-3 rounded-lg bg-muted/50">
-            <div className="text-sm text-muted-foreground">Total Rows</div>
-            <div className="text-2xl font-bold">{data.length.toLocaleString()}</div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
+          <div className="p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="text-xs sm:text-sm text-muted-foreground">Total Rows</div>
+            <div className="text-lg sm:text-2xl font-bold">{data.length.toLocaleString()}</div>
           </div>
-          <div className="p-3 rounded-lg bg-muted/50">
-            <div className="text-sm text-muted-foreground">Total Columns</div>
-            <div className="text-2xl font-bold">{columns.length}</div>
+          <div className="p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="text-xs sm:text-sm text-muted-foreground">Total Columns</div>
+            <div className="text-lg sm:text-2xl font-bold">{columns.length}</div>
           </div>
-          <div className="p-3 rounded-lg bg-muted/50">
-            <div className="text-sm text-muted-foreground">Complete Rows</div>
-            <div className="text-2xl font-bold">
+          <div className="p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="text-xs sm:text-sm text-muted-foreground">Complete Rows</div>
+            <div className="text-lg sm:text-2xl font-bold">
               {data.filter(row => columns.every(col => row[col.name] != null)).length.toLocaleString()}
             </div>
           </div>
-          <div className="p-3 rounded-lg bg-muted/50">
-            <div className="text-sm text-muted-foreground">Avg Null %</div>
-            <div className="text-2xl font-bold">
+          <div className="p-2 sm:p-3 rounded-lg bg-muted/50">
+            <div className="text-xs sm:text-sm text-muted-foreground">Avg Null %</div>
+            <div className="text-lg sm:text-2xl font-bold">
               {stats.length > 0
                 ? (stats.reduce((sum, s) => sum + s.nullPercentage, 0) / stats.length).toFixed(1)
                 : 0}%
@@ -175,30 +175,30 @@ export function DataInsightsPanel({ data, columns }: DataInsightsPanelProps) {
         </div>
 
         {/* Column Statistics */}
-        <div className="space-y-3">
-          <h3 className="font-semibold text-sm">Column Statistics</h3>
+        <div className="space-y-2 sm:space-y-3">
+          <h3 className="font-semibold text-xs sm:text-sm">Column Statistics</h3>
           <div className="space-y-2 max-h-96 overflow-y-auto">
             {stats.map((stat) => {
               const QualityIcon = qualityIcons[stat.quality]
               return (
                 <div
                   key={stat.name}
-                  className="p-3 rounded-lg border bg-card space-y-2"
+                  className="p-2 sm:p-3 rounded-lg border bg-card space-y-2"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{stat.name}</span>
-                      <Badge variant="outline" className="text-xs">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                      <span className="font-medium text-xs sm:text-sm break-words">{stat.name}</span>
+                      <Badge variant="outline" className="text-[10px] sm:text-xs">
                         {stat.type}
                       </Badge>
-                      <Badge className={`${qualityColors[stat.quality]} text-xs`}>
+                      <Badge className={`${qualityColors[stat.quality]} text-[10px] sm:text-xs`}>
                         <QualityIcon className="h-3 w-3 mr-1" />
                         {stat.quality}
                       </Badge>
                     </div>
                   </div>
                   
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-1.5 sm:gap-2 text-xs sm:text-sm">
                     <div>
                       <span className="text-muted-foreground">Nulls: </span>
                       <span className="font-medium">
