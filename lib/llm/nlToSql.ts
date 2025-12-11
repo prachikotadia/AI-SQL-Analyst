@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import { buildPrompt, buildChatPrompt } from './prompt'
 import { repairJson } from './jsonRepair'
 import type { LLMResponse } from '@/types'
+import { createOpenAIConfig, loadLLMConfig } from './env'
 
 // Response format for chat sessions with uploaded files
 export interface ChatLLMResponse {
@@ -15,11 +16,6 @@ export interface ChatLLMResponse {
     data?: unknown
   }
 }
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'lm-studio', // LM Studio doesn't require a real key
-  baseURL: process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1', // LM Studio local server
-})
 
 export interface NLToSqlOptions {
   query: string
@@ -41,10 +37,15 @@ export async function nlToSql(options: NLToSqlOptions): Promise<NLToSqlResult> {
   try {
     const prompt = await buildPrompt(query, timeRange)
 
-    // LM Studio doesn't support 'json_object' format, use 'text' instead
-    // Check if using LM Studio (default baseURL or localhost/127.0.0.1)
-    const baseURL = process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
-    const isLMStudio = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
+    // Load LLM configuration with validation
+    const llmConfig = loadLLMConfig()
+    const openAIConfig = createOpenAIConfig()
+    const openai = new OpenAI(openAIConfig)
+
+    // Check if using LM Studio (localhost/127.0.0.1)
+    const isLMStudio = llmConfig.baseURL.includes('localhost') || 
+                       llmConfig.baseURL.includes('127.0.0.1') || 
+                       llmConfig.baseURL.includes('1234')
     
     interface ChatCompletionRequest {
       model: string
@@ -55,7 +56,7 @@ export async function nlToSql(options: NLToSqlOptions): Promise<NLToSqlResult> {
     }
     
     const requestOptions: ChatCompletionRequest = {
-      model: process.env.OPENAI_MODEL || 'llama-3.2-1b-instruct', // LM Studio model name
+      model: llmConfig.model,
       messages: [
         {
           role: 'system',
@@ -159,9 +160,13 @@ Original prompt: ${await buildPrompt(query, timeRange)}
 
 Return valid JSON with fields: preview_sql, action_sql, reasoning, chart (with type, xField, yField).`
       
-      // Check if using LM Studio (for retry)
-      const baseURL = process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
-      const isLMStudioRetry = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
+      // Load config for retry
+      const retryConfig = loadLLMConfig()
+      const retryOpenAIConfig = createOpenAIConfig()
+      const retryOpenai = new OpenAI(retryOpenAIConfig)
+      const isLMStudioRetry = retryConfig.baseURL.includes('localhost') || 
+                              retryConfig.baseURL.includes('127.0.0.1') || 
+                              retryConfig.baseURL.includes('1234')
       
       try {
         interface ChatCompletionRequest {
@@ -173,7 +178,7 @@ Return valid JSON with fields: preview_sql, action_sql, reasoning, chart (with t
         }
         
         const retryRequestOptions: ChatCompletionRequest = {
-          model: process.env.OPENAI_MODEL || 'llama-3.2-1b-instruct', // LM Studio model name
+          model: retryConfig.model,
           messages: [
             {
               role: 'system',
@@ -193,7 +198,7 @@ Return valid JSON with fields: preview_sql, action_sql, reasoning, chart (with t
           retryRequestOptions.response_format = { type: 'json_object' }
         }
         
-        const retryCompletion = await openai.chat.completions.create(retryRequestOptions)
+        const retryCompletion = await retryOpenai.chat.completions.create(retryRequestOptions)
 
         const retryContent = retryCompletion.choices[0]?.message?.content
         if (retryContent) {
@@ -241,9 +246,15 @@ export async function nlToSqlForChat(
   try {
     const prompt = buildChatPrompt(userQuery, tableName, columns, data)
 
-    // Check if using LM Studio
-    const baseURL = process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
-    const isLMStudio = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
+    // Load LLM configuration with validation
+    const llmConfig = loadLLMConfig()
+    const openAIConfig = createOpenAIConfig()
+    const openai = new OpenAI(openAIConfig)
+
+    // Check if using LM Studio (localhost/127.0.0.1)
+    const isLMStudio = llmConfig.baseURL.includes('localhost') || 
+                       llmConfig.baseURL.includes('127.0.0.1') || 
+                       llmConfig.baseURL.includes('1234')
     
     interface ChatCompletionRequest {
       model: string
@@ -254,7 +265,7 @@ export async function nlToSqlForChat(
     }
     
     const requestOptions: ChatCompletionRequest = {
-      model: process.env.OPENAI_MODEL || 'llama-3.2-1b-instruct',
+      model: llmConfig.model,
       messages: [
         {
           role: 'system',
@@ -351,8 +362,13 @@ Original prompt: ${buildChatPrompt(userQuery, tableName, columns, data)}
 
 Return valid JSON with fields: reasoning, sql, chart (with type, xField, yField, seriesField).`
       
-      const baseURL = process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
-      const isLMStudioRetry = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
+      // Load config for retry
+      const retryConfig = loadLLMConfig()
+      const retryOpenAIConfig = createOpenAIConfig()
+      const retryOpenai = new OpenAI(retryOpenAIConfig)
+      const isLMStudioRetry = retryConfig.baseURL.includes('localhost') || 
+                              retryConfig.baseURL.includes('127.0.0.1') || 
+                              retryConfig.baseURL.includes('1234')
       
       try {
         interface ChatCompletionRequest {
@@ -364,7 +380,7 @@ Return valid JSON with fields: reasoning, sql, chart (with type, xField, yField,
         }
         
         const retryRequestOptions: ChatCompletionRequest = {
-          model: process.env.OPENAI_MODEL || 'llama-3.2-1b-instruct',
+          model: retryConfig.model,
           messages: [
             {
               role: 'system',
@@ -383,7 +399,7 @@ Return valid JSON with fields: reasoning, sql, chart (with type, xField, yField,
           retryRequestOptions.response_format = { type: 'json_object' }
         }
         
-        const retryCompletion = await openai.chat.completions.create(retryRequestOptions)
+        const retryCompletion = await retryOpenai.chat.completions.create(retryRequestOptions)
         const retryContent = retryCompletion.choices[0]?.message?.content
 
         if (retryContent) {

@@ -1,17 +1,18 @@
 import OpenAI from 'openai'
 import type { LLMResponse } from '@/types'
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || 'lm-studio', // LM Studio doesn't require a real key
-  baseURL: process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1', // LM Studio local server
-})
+import { createOpenAIConfig, loadLLMConfig } from './env'
 
 export async function generateSql(prompt: string, retryOnError: boolean = true): Promise<LLMResponse> {
   try {
-    // LM Studio doesn't support 'json_object' format, use 'text' instead
-    // Check if using LM Studio (default baseURL or localhost/127.0.0.1)
-    const baseURL = process.env.OPENAI_BASE_URL || 'http://127.0.0.1:1234/v1'
-    const isLMStudio = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
+    // Load LLM configuration with validation
+    const llmConfig = loadLLMConfig()
+    const openAIConfig = createOpenAIConfig()
+    const openai = new OpenAI(openAIConfig)
+    
+    // Check if using LM Studio (localhost/127.0.0.1)
+    const isLMStudio = llmConfig.baseURL.includes('localhost') || 
+                       llmConfig.baseURL.includes('127.0.0.1') || 
+                       llmConfig.baseURL.includes('1234')
     
     interface ChatCompletionRequest {
       model: string
@@ -21,7 +22,7 @@ export async function generateSql(prompt: string, retryOnError: boolean = true):
     }
     
     const requestOptions: ChatCompletionRequest = {
-      model: process.env.OPENAI_MODEL || 'llama-3.2-1b-instruct', // LM Studio model name
+      model: llmConfig.model,
       messages: [
         {
           role: 'system',

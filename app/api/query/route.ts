@@ -273,46 +273,25 @@ export async function POST(request: NextRequest) {
         if (!prompt || prompt.trim().length === 0) {
           throw new Error('Generated prompt is empty')
         }
-      } catch (promptError: any) {
-        throw new Error(`Failed to build prompt: ${promptError.message}`)
+      } catch (promptError: unknown) {
+        const errorMessage = promptError instanceof Error ? promptError.message : 'Unknown error'
+        throw new Error(`Failed to build prompt: ${errorMessage}`)
       }
       
-      let baseURL = process.env.OPENAI_BASE_URL || 'https://openrouter.ai/api/v1'
-      const apiKey = process.env.OPENAI_API_KEY || 'lm-studio'
+      // Load LLM configuration with validation
+      const { createOpenAIConfig, loadLLMConfig } = await import('@/lib/llm/env')
+      const llmConfig = loadLLMConfig()
+      const openAIConfig = createOpenAIConfig()
       
-      // Fix incorrect base URLs
-      if (baseURL.includes('platform.openai.com')) {
-        if (apiKey && apiKey.startsWith('sk-')) {
-          baseURL = 'https://api.openai.com/v1'
-        } else {
-          baseURL = 'https://openrouter.ai/api/v1'
-        }
-      }
+      // Check if using LM Studio (localhost/127.0.0.1)
+      const isLMStudio = llmConfig.baseURL.includes('localhost') || 
+                         llmConfig.baseURL.includes('127.0.0.1') || 
+                         llmConfig.baseURL.includes('1234')
       
-      const isLMStudio = baseURL.includes('localhost') || baseURL.includes('127.0.0.1') || baseURL.includes('1234')
-      const isOpenAI = baseURL.includes('api.openai.com')
-      
-      if (!isLMStudio && (!apiKey || apiKey === 'lm-studio')) {
-        throw new Error('OpenRouter API key is required. Please set OPENAI_API_KEY environment variable in Netlify dashboard (Site settings → Environment variables). See NETLIFY_SETUP.md for instructions.')
-      }
-      
-      let modelName = process.env.OPENAI_MODEL || 'openai/gpt-4o-mini'
-      if (isOpenAI) {
-        if (modelName.startsWith('openai/')) {
-          modelName = modelName.replace('openai/', '')
-        }
-        if (!process.env.OPENAI_MODEL) {
-          modelName = 'gpt-4o-mini'
-        }
-      }
-      
-      const openai = new OpenAI({
-        apiKey: apiKey,
-        baseURL: baseURL,
-      })
+      const openai = new OpenAI(openAIConfig)
       
       const requestOptions: any = {
-        model: modelName,
+        model: llmConfig.model,
         messages: [
           {
             role: 'system',
