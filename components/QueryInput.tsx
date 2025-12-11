@@ -351,7 +351,6 @@ export function QueryInput({
   const handleDemoCSV = async () => {
     if (isUploading || isLoading) return
     
-    setIsUploading(true)
     try {
       const response = await fetch('/sample-data.csv', {
         cache: 'no-cache',
@@ -369,102 +368,7 @@ export function QueryInput({
       
       const file = new File([blob], 'sample-data.csv', { type: 'text/csv' })
       
-      const formData = new FormData()
-      formData.append('file', file)
-      
-      let chatIdToUse = chatId
-      if (!chatIdToUse) {
-        try {
-          const createRes = await fetch('/api/chats', { method: 'POST' })
-          if (createRes.ok) {
-            const createData = await createRes.json()
-            chatIdToUse = createData.chatId
-            if (onChatCreated && chatIdToUse) {
-              onChatCreated(chatIdToUse)
-            }
-          } else {
-            throw new Error('Failed to create chat')
-          }
-        } catch (error) {
-          toast({
-            title: 'Upload failed',
-            description: 'Could not create or retrieve chat. Please try again.',
-            variant: 'destructive',
-          })
-          setIsUploading(false)
-          return
-        }
-      }
-      
-      if (!chatIdToUse) {
-        toast({
-          title: 'Upload failed',
-          description: 'Chat ID is required. Please try again.',
-          variant: 'destructive',
-        })
-        setIsUploading(false)
-        return
-      }
-      
-      formData.append('chatId', chatIdToUse)
-      
-      const uploadResponse = await fetch('/api/attachments', {
-        method: 'POST',
-        body: formData,
-      })
-      
-      const data = await uploadResponse.json()
-      
-      if (!uploadResponse.ok) {
-        throw new Error(data.error || 'Upload failed')
-      }
-      
-      const newFile: AttachedFile = {
-        id: data.fileId,
-        fileName: data.fileName,
-        rowCount: data.rowCount,
-      }
-      
-      if (data.chatId) {
-        chatIdToUse = data.chatId
-      }
-      
-      let updatedFiles: AttachedFile[] = []
-      setAttachedFiles(prev => {
-        if (prev.some(f => f.id === newFile.id)) {
-          return prev
-        }
-        updatedFiles = [...prev, newFile]
-        if (chatIdToUse) {
-          localStorage.setItem(`chat_files_${chatIdToUse}`, JSON.stringify(updatedFiles))
-        }
-        return updatedFiles
-      })
-      
-      if (updatedFiles.length > 0 && onFilesChange) {
-        onFilesChange(updatedFiles)
-      }
-      
-      if (chatIdToUse) {
-        try {
-          await fetch('/api/chats', {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              chatId: chatIdToUse,
-              action: 'addFile',
-              fileIds: [data.fileId],
-            }),
-          })
-        } catch (error) {
-          // File is already uploaded, continue
-        }
-      }
-      
-      toast({
-        title: 'Demo data loaded',
-        description: `${data.fileName} (${data.rowCount} rows) has been attached`,
-      })
+      await handleFileSelect(file)
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load demo data'
       toast({
@@ -472,8 +376,6 @@ export function QueryInput({
         description: errorMessage,
         variant: 'destructive',
       })
-    } finally {
-      setIsUploading(false)
     }
   }
 
