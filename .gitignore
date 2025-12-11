@@ -39,7 +39,7 @@ next-env.d.ts
 # logs
 logs/
 *.log
-data/
+/data/
 upload-history.json
 
 # uploaded files (persistent disk storage)
